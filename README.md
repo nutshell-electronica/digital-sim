@@ -6,6 +6,10 @@ Simulador todo en uno para el módulo **Equipos Microprogramables** (FP, Electr�
 
 Autor: José Luis Guerrero Marín.
 
+![Pantalla de inicio](docs/img/00-inicio.png)
+
+Al abrirlo, la pantalla de inicio muestra un contador de 4 bits animado con su analizador lógico y su display, y ofrece dos caminos: **Modo libre** o **Prácticas EMI**.
+
 ![Prácticas](docs/img/00-practicas.png)
 
 ## Qué incluye

@@ -27,7 +27,7 @@ App.init = function () {
   <div id="pbar" hidden></div><main id="main">${PAGES.map(p => `<section class="pg" id="pg-${p.id}" hidden></section>`).join('')}</main>
   <div id="status"><span id="st1"></span><span id="st2"></span><span id="st4" title="Estado del autoguardado"></span><span class="sp"></span><span id="st3">Arrastra piezas del catálogo al lienzo · doble clic para editar sus valores · Supr borra</span></div>
   <div id="menupop" hidden></div><div id="toast"></div>
-  <div class="ov" id="ov-prac" hidden></div><div class="ov" id="ov-enun" hidden></div><div class="ov" id="ov-guide" hidden></div><div class="ov" id="ov-gloss" hidden></div><div class="ov" id="ov-help" hidden></div>`;
+  <div class="ov" id="ov-home" hidden></div><div class="ov" id="ov-prac" hidden></div><div class="ov" id="ov-enun" hidden></div><div class="ov" id="ov-guide" hidden></div><div class="ov" id="ov-gloss" hidden></div><div class="ov" id="ov-help" hidden></div>`;
   buildPractices(); buildGuide(); buildOverlays();
   App.kmap = new KarnaughUI($('#pg-kmap'), App);
   const sch = $('#pg-schem'); sch.classList.add('ed'); Schem.registerICs();
@@ -43,11 +43,13 @@ App.init = function () {
     else if (e.altKey && /^Digit[1-5]$/.test(e.code)) { e.preventDefault(); App.go(PAGES[+e.code.slice(5) - 1].id); } });
   restore();
   App.go('kmap'); requestAnimationFrame(tick);
-  if (!App.practice) openOv('ov-prac');
+  Home.init($('#ov-home'), { avatar: App.avatarHTML(34), onFree: () => App.openPractice('LIBRE'), onPrac: () => openOv('ov-prac'), onBack: () => closeOv() });
+  document.querySelector('header .brand').onclick = () => openOv('ov-home'); document.querySelector('header .brand').title = 'Pantalla de inicio';
+  openOv('ov-home');
 };
 function fs() { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }
 function closeOv() { document.querySelectorAll('.ov').forEach(o => o.hidden = true); }
-function openOv(id) { closeOv(); if (id === 'ov-prac') buildPractices(); if (id === 'ov-enun') buildEnun(App.enunId); $('#' + id).hidden = false; }
+function openOv(id) { closeOv(); if (id === 'ov-home') Home.setContinue(App.hasWork()); if (id === 'ov-prac') buildPractices(); if (id === 'ov-enun') buildEnun(App.enunId); $('#' + id).hidden = false; }
 function menu(btn, which) {
   const m = $('#menupop'), r = btn.getBoundingClientRect();
   const items = which === 'arch' ? [['Nuevo (vacía todo)', 'new'], ['Abrir proyecto…', 'open'], ['Guardar proyecto (.json)', 'save'], ['Autoguardado en un archivo…', 'autofile']] : [['Guía de uso (F1)', 'guide'], ['Siglas y fórmulas', 'gloss'], ['Atajos y consejos', 'help'], ['Pantalla completa', 'fs']];
