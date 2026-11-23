@@ -44,7 +44,7 @@ E.dsFile = (id) => { id = String(id); if (id.indexOf('555') >= 0) return 'NE555'
 E.dsMaker = (id) => (String(id).indexOf('555') >= 0 ? 'STMicroelectronics' : 'NXP');
 E.dsHref = (id) => { const f = E.dsFile(id); return f ? 'https://www.alldatasheet.es/view.jsp?Searchword=' + encodeURIComponent(f + ' ' + E.dsMaker(id)) : null; };
 E.dsExact = () => true;
-E.DS_EXTRA = { PROTO: 'Breadboard Datasheet.pdf', SONDA: 'Sonda.Logica.Datasheet.pdf', D7: 'datasheet/LED 7-Segment Display Common Anode - 5161BS.pdf' };
+E.DS_EXTRA = {};
 E.dsExtra = (k) => '../' + encodeURI(E.DS_EXTRA[k]);
 
 /* ---------- Definiciones de integrados ---------- */

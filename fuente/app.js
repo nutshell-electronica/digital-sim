@@ -192,7 +192,6 @@ function buildGuide() {
   <h2 id="g12">12 · Hojas de datos</h2>
   <p>Los enlaces abren la búsqueda en alldatasheet.es de la versión <b>HC</b> del integrado (fabricante NXP; STMicroelectronics para el NE555). Necesitas conexión a internet.</p>
   <table class="gt"><tr><th>Integrado</th><th>Función</th><th>Hoja de datos</th></tr>${icrows}</table>
-  <p><b>Instrumentos y placas (PDF de la carpeta):</b> ${L('PROTO', 'Protoboard')} · ${L('SONDA', 'Sonda lógica')} · ${L('D7', 'Display 7 segmentos 5161')}.</p>
   <p class="mut">Los patillajes se revisaron contra las hojas de datos 74LS; la serie 74HC comparte patillaje.</p>
   </article></div>`;
   g.onclick = (e) => { const a = e.target.closest('[data-sc]'); if (a) { e.preventDefault(); const t = g.querySelector('#' + a.dataset.sc); t && t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } };
