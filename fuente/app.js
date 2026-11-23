@@ -80,7 +80,7 @@ const extraChip = (k) => ({ MB102: 'Fuente MB102', PROTO: 'Protoboard 830', SOND
 function buildPractices() {
   const h = $('#ov-prac');
   const free = Practicas.free, frow = `<div class="prow free ${App.practice === 'LIBRE' ? 'cur' : ''}"><div class="pn">Libre</div><div class="pb"><div class="pt">${esc(free.title)}</div><div class="pd">${esc(free.brief)}</div><div class="pm">Sin enunciado ni informe guiado · empieza en <b>${Practicas.TOOLNAME[free.tool]}</b></div></div><button class="b ${App.practice === 'LIBRE' ? 'prim' : ''}" data-open="LIBRE">Abrir</button></div>`;
-  const rows = frow + Practicas.list.map(p => `<div class="prow ${p.id === App.practice ? 'cur' : ''}"><div class="pn">${p.id}</div><div class="pb"><div class="pt">${esc(p.title)}</div><div class="pd">${esc(p.brief)}</div><div class="pm">Tema ${p.tema} · ${esc(p.ra)} · empieza en <b>${Practicas.TOOLNAME[p.tool]}</b></div>${(p.ics.length || p.extra.length) ? `<div class="pm">Material: ${p.ics.map(icChip).join(' ')} ${p.extra.map(k => `<a class="chipl" href="${DSim.dsExtra(k)}" target="_blank" rel="noopener">${extraChip(k)}</a>`).join(' ')}</div>` : ''}</div><div class="pbtn"><button class="b ${p.id === App.practice ? 'prim' : ''}" data-open="${p.id}">Abrir</button><button class="b" data-enun="${p.id}">Enunciado</button></div></div>`).join('');
+  const rows = frow + Practicas.list.map(p => `<div class="prow ${p.id === App.practice ? 'cur' : ''}"><div class="pn">${p.id}</div><div class="pb"><div class="pt">${esc(p.title)}</div><div class="pd">${esc(p.brief)}</div><div class="pm">Tema ${p.tema} · ${esc(p.ra)} · empieza en <b>${Practicas.TOOLNAME[p.tool]}</b></div>${(p.ics.length || p.extra.length) ? `<div class="pm">Material: ${p.ics.map(icChip).join(' ')} ${p.extra.filter(k => DSim.DS_EXTRA[k]).map(k => `<a class="chipl" href="${DSim.dsExtra(k)}" target="_blank" rel="noopener">${extraChip(k)}</a>`).join(' ')}</div>` : ''}</div><div class="pbtn"><button class="b ${p.id === App.practice ? 'prim' : ''}" data-open="${p.id}">Abrir</button><button class="b" data-enun="${p.id}">Enunciado</button></div></div>`).join('');
   h.innerHTML = `<div class="ovc"><button class="ovx" data-close title="Cerrar (Esc)">×</button><div class="kick">EQUIPOS MICROPROGRAMABLES</div><h3>Prácticas</h3>
     <p class="lead">Elige una práctica para ver su enunciado y el material. El espacio de trabajo siempre empieza vacío: tú montas el circuito, tú simulas y tú mides.</p>
     <div class="plgrid"><section class="plist">${rows}</section><aside>
@@ -94,7 +94,7 @@ function buildEnun(id) {
   const box = (b) => { const k = /SEGURIDAD|ANTES DE DAR TENSI|ANTES DE EMPEZAR/.test(b.t) ? 'warn' : /TERMINADA/.test(b.t) ? 'chk' : /ENUNCIADO/.test(b.t) ? 'enu' : '';
     const body = k === 'chk' ? '<ul>' + b.p.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : b.p.map(x => `<p class="${/^[–-] /.test(x) ? 'bl' : ''}">${esc(x)}</p>`).join('');
     return `<div class="ebox ${k}"><div class="eh">${esc(b.t)}</div>${body}</div>`; };
-  const cur = App.practice === id, mat = p.ics.map(icChip).concat(p.extra.map(k => `<a class="chipl" href="${DSim.dsExtra(k)}" target="_blank" rel="noopener">${extraChip(k)}</a>`)).join(' ');
+  const cur = App.practice === id, mat = p.ics.map(icChip).concat(p.extra.filter(k => DSim.DS_EXTRA[k]).map(k => `<a class="chipl" href="${DSim.dsExtra(k)}" target="_blank" rel="noopener">${extraChip(k)}</a>`)).join(' ');
   h.innerHTML = `<div class="ovc enun"><button class="ovx" data-close title="Cerrar (Esc)">×</button><div class="kick">PRÁCTICA ${p.id} · TEMA ${p.tema} · ${esc(p.ra)}</div><h3>${esc(p.title)}</h3>
     ${E.boxes.map(box).join('')}${mat ? `<p class="pm">Hojas de datos: ${mat}</p>` : ''}
     ${E.heads.length ? `<div class="ebox"><div class="eh">APARTADOS DEL CUADERNO</div><ol class="eap">${E.heads.map(x => `<li>${esc(x.replace(/^\d+\.\s*/, ''))}</li>`).join('')}</ol><p class="mut">En el simulador se hace lo que corresponde a cada apartado; las respuestas escritas van en el cuaderno y en «Informe».</p></div>` : ''}
@@ -106,7 +106,7 @@ function updatePbar() {
   const b = $('#pbar'), p = Practicas.get(App.practice);
   const show = p && App.page !== 'report';
   b.hidden = !show; if (!show) return;
-  const mat = p.ics.map(icChip).concat(p.extra.map(k => `<a class="chipl" href="${DSim.dsExtra(k)}" target="_blank" rel="noopener">${extraChip(k)}</a>`)).join(' ');
+  const mat = p.ics.map(icChip).concat(p.extra.filter(k => DSim.DS_EXTRA[k]).map(k => `<a class="chipl" href="${DSim.dsExtra(k)}" target="_blank" rel="noopener">${extraChip(k)}</a>`)).join(' ');
   b.innerHTML = `<div class="pb1"><b>${p.free ? 'Modo libre' : 'Práctica ' + p.id}</b> · ${p.free ? '' : esc(p.title)} <span class="mut">— ${esc(p.brief)}</span> ${p.free ? '' : '<button class="b sm" id="pbe">Enunciado</button>'} <button class="b sm" id="pbt">${p.free ? 'Cómo se trabaja ▾' : 'Método de trabajo ▾'}</button></div>${mat ? `<div class="pb2">Hojas de datos: ${mat}</div>` : ''}<ol class="pb3" id="pbs" hidden>${p.pasos.map(x => `<li>${esc(x)}</li>`).join('')}</ol>`;
   $('#pbt').onclick = () => { const o = $('#pbs'); o.hidden = !o.hidden; };
   const be = $('#pbe'); if (be) be.onclick = () => { App.enunId = App.practice; openOv('ov-enun'); };
@@ -192,7 +192,7 @@ function buildGuide() {
   <h2 id="g12">12 · Hojas de datos</h2>
   <p>Los enlaces abren la búsqueda en alldatasheet.es de la versión <b>HC</b> del integrado (fabricante NXP; STMicroelectronics para el NE555). Necesitas conexión a internet.</p>
   <table class="gt"><tr><th>Integrado</th><th>Función</th><th>Hoja de datos</th></tr>${icrows}</table>
-  <p><b>Instrumentos y placas (PDF de la carpeta):</b> ${L('MB102', 'Fuente MB102')} · ${L('PROTO', 'Protoboard')} · ${L('SONDA', 'Sonda lógica')} · ${L('LA', 'Analizador lógico')} · ${L('ALH', 'Alhambra II')} · ${L('D7', 'Display 7 segmentos 5161')}.</p>
+  <p><b>Instrumentos y placas (PDF de la carpeta):</b> ${L('PROTO', 'Protoboard')} · ${L('SONDA', 'Sonda lógica')} · ${L('D7', 'Display 7 segmentos 5161')}.</p>
   <p class="mut">Los patillajes se revisaron contra las hojas de datos 74LS; la serie 74HC comparte patillaje.</p>
   </article></div>`;
   g.onclick = (e) => { const a = e.target.closest('[data-sc]'); if (a) { e.preventDefault(); const t = g.querySelector('#' + a.dataset.sc); t && t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } };

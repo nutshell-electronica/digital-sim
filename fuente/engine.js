@@ -36,7 +36,7 @@ E.outModel = outModel; E.thresholds = thresholds;
 const DS = {
   '00': '74LS00.pdf', '02': '74LS02.pdf', '04': '74LS04.pdf', '08': '74LS08.pdf', '32': '74LS32.pdf', '86': '74LS86.pdf', '74': '74LS74.pdf', '76': '74LS76.pdf',
   '151': '74LS151 - 1-of-8 Line Data Selector-Multiplexer.pdf', '42': '74LS42 - demux-decod.PDF', '47': '74LS47 - BCD to 7S - common anode.PDF', '48': '74LS48 - BCD to 7S - common cathode.pdf',
-  '194': '74LS194.pdf', '83': '74LS83 - 4-Bit Binary Adder - FAIRCHILD.pdf', '148': '74LS148 - 8-Line-to-3-Line Priority Encoders - MOTOROLA.pdf', '165': '74LS165.pdf', '190': '74190.pdf', '555': 'LM555 - multivibrador.pdf'
+  '194': '74LS194.pdf', '83': '74LS83 - 4-Bit Binary Adder - FAIRCHILD.pdf', '148': '74LS148 - 8-Line-to-3-Line Priority Encoders - MOTOROLA.pdf', '165': '74LS165.pdf', '190': '74190.pdf', '10': '74LS10.pdf', '14': '74LS14.pdf', '175': '74LS175.pdf', '555': 'LM555 - multivibrador.pdf'
 };
 /* Hojas de datos: siempre la versión HC en alldatasheet.es, preferentemente de NXP (o STMicroelectronics en el 555) */
 const HCMAP = { '83': '283', '47': '4511', '48': '4511' };
@@ -44,7 +44,7 @@ E.dsFile = (id) => { id = String(id); if (id.indexOf('555') >= 0) return 'NE555'
 E.dsMaker = (id) => (String(id).indexOf('555') >= 0 ? 'STMicroelectronics' : 'NXP');
 E.dsHref = (id) => { const f = E.dsFile(id); return f ? 'https://www.alldatasheet.es/view.jsp?Searchword=' + encodeURIComponent(f + ' ' + E.dsMaker(id)) : null; };
 E.dsExact = () => true;
-E.DS_EXTRA = { MB102: 'power-supply-for-bread-board-datasheet.pdf', PROTO: 'Breadboard Datasheet.pdf', SONDA: 'Sonda.Logica.Datasheet.pdf', LA: 'Logic_Analyzer_Datasheet.pdf', ALH: 'fpga/Alhambra_II_Schematics.PDF', D7: 'datasheet/LED 7-Segment Display Common Anode - 5161BS.pdf' };
+E.DS_EXTRA = { PROTO: 'Breadboard Datasheet.pdf', SONDA: 'Sonda.Logica.Datasheet.pdf', D7: 'datasheet/LED 7-Segment Display Common Anode - 5161BS.pdf' };
 E.dsExtra = (k) => '../' + encodeURI(E.DS_EXTRA[k]);
 
 /* ---------- Definiciones de integrados ---------- */
