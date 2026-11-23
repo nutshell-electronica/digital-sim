@@ -316,7 +316,9 @@ class Sim {
     } else if (p.type === 'SRC') { // fuente lógica: nivel / reloj
       let y;
       if (p.mode === 'clock') { const per = 1 / p.hz; y = ((this.t % per) / per) < (p.duty || 0.5) ? 1 : 0; } else if (p.mode === 'pulse') y = p.level ? 1 : 0; else y = p.level ? 1 : 0;
-      p.val = y; pg[0] = 1 / (p.rout || 1); pi[0] = (y ? (p.vh || 5) : 0) * pg[0]; pk[0] = y ? 2 : 3;
+      let vh = p.vh || 5;
+      if (p.pwr) { const vcc = (this.vp[p.pins[1]] || 0) - (this.vp[p.pins[2]] || 0); p.on = vcc > 2.4 && vcc < 6; vh = vcc; if (!p.on) { p.val = 0; pg[0] = GMIN; pi[0] = 0; pk[0] = 0; return; } }
+      p.val = y; pg[0] = 1 / (p.rout || 1); pi[0] = (y ? vh : 0) * pg[0]; pk[0] = y ? 2 : 3;
     } else if (p.type === 'MCU') this.dMcu(p);
   }
   d555(p, vcc, vg) {

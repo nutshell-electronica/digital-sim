@@ -33,7 +33,7 @@ B.bands = (r) => { if (!(r > 0)) return ['#222', '#222', '#222']; let e = Math.f
 /* ---------- modelo ---------- */
 B.PARTS = {
   R: { name: 'Resistencia', pts: 2, props: { v: '330' } }, LED: { name: 'LED', pts: 2, props: { color: 'red' } }, C: { name: 'Condensador', pts: 2, props: { v: '100u' } },
-  WIRE: { name: 'Cable', pts: 2, props: { color: '#4C6A8C' } }, PUSH: { name: 'Pulsador (4 patas)', pts: 1, props: {} }, DIPSW: { name: 'Minipuerto DIP 8', pts: 1, props: {} },
+  WIRE: { name: 'Cable', pts: 2, props: { color: '#4C6A8C' } }, PUSH: { name: 'Pulsador (4 patas)', pts: 1, props: {} }, DIPSW: { name: 'Minipuerto DIP 8', pts: 1, props: {} }, CLK: { name: 'Generador de reloj', pts: 1, props: {} },
   D7: { name: 'Display 7 seg (5161)', pts: 1, props: { ca: 0 } }, DMM: { name: 'Multímetro', pts: 2, props: { mode: 'V' } }, LP: { name: 'Sonda lógica', pts: 1, props: {} }, LA: { name: 'Analizador lógico (8 canales)', pts: 8, props: {} }
 };
 const dsLinkHTML = (id) => { const h = DSim.dsHref(id); return h ? `<p><a class="dsl" href="${h}" target="_blank" rel="noopener">Hoja de datos ${DSim.dsFile(id)} · ${DSim.dsMaker(id)}</a> <span class="mut">(alldatasheet.es)</span></p>` : ''; };
@@ -70,6 +70,7 @@ B.compile = function (board, ctx) {
       case 'IC': { const keys = B.pinKeys(it), d = DSim.IC[it.ic]; refs[it.id] = push(it, { type: 'IC', ic: it.ic, label: it.label || d.name, pinIds: keys.map(k => used.has(N(k)) || true ? N(k) : null) }); break; }
       case 'PUSH': { const a = hole(it.col, 'e'), b = hole(it.col + 2, 'e'), c = hole(it.col, 'f'), e = hole(it.col + 2, 'f'); nb.join(N(a), N(b)); nb.join(N(c), N(e)); refs[it.id] = push(it, { type: 'SW', closed: false, pinIds: [N(a), N(c)] }); break; }
       case 'DIPSW': { const r = [], n = it.n || 8; it.st = it.st || new Array(n).fill(0); for (let i = 0; i < n; i++) r.push(push(it, { type: 'SW', closed: !!it.st[i], pinIds: [N(hole(it.col + i, 'e')), N(hole(it.col + i, 'f'))] })); refs[it.id] = r; break; }
+      case 'CLK': { const c = it.col, hz = Math.min(1e5, Math.max(0.01, Schem.parseVal(it.hz) || 1)), du = Math.min(95, Math.max(5, +it.duty || 50)) / 100; refs[it.id] = push(it, { type: 'SRC', mode: 'clock', pwr: true, hz, duty: du, rout: 60, pinIds: [N(hole(c + 1, 'e')), N(hole(c, 'e')), N(hole(c + 2, 'e'))] }); break; }
       case 'D7': { const c = it.col, ks = [hole(c + 3, 'f'), hole(c + 4, 'f'), hole(c + 3, 'e'), hole(c + 1, 'e'), hole(c, 'e'), hole(c + 1, 'f'), hole(c, 'f'), hole(c + 4, 'e'), hole(c + 2, 'e')];
         nb.join(N(hole(c + 2, 'e')), N(hole(c + 2, 'f'))); refs[it.id] = push(it, { type: 'DISP7', color: 'red', ca: +it.ca, pinIds: ks.map(N) }); break; }
       case 'DMM': if (it.red && it.black && it.mode !== 'R') refs[it.id] = push(it, { type: it.mode === 'A' ? 'AMM' : 'VM', pinIds: [N(it.red), N(it.black)] }); break;
@@ -126,7 +127,7 @@ B.Editor = class {
   buildPalette() {
     const el = this.root.querySelector('#bpal'), ics = Object.values(DSim.IC).filter(d => d.fam !== 'ID' || d.analog === '555');
     const btn = (k, t, d) => `<button class="pi" draggable="true" data-t="${k}" title="${esc(d || UI.HELP[k.split(':')[0] + '_b'] || UI.HELP[k.split(':')[0]] || t)}">${UI.boardThumb(k)}<span>${esc(t)}</span></button>`;
-    el.innerHTML = `<details open><summary>Componentes</summary>${btn('R', 'Resistencia')}${btn('LED:red', 'LED rojo')}${btn('LED:green', 'LED verde')}${btn('LED:yellow', 'LED amarillo')}${btn('C', 'Condensador')}${btn('PUSH', 'Pulsador')}${btn('DIPSW:4', 'Microinterruptor 4')}${btn('DIPSW:8', 'Microinterruptor 8')}${btn('DIPSW:10', 'Microinterruptor 10')}${btn('D7:0', 'Display 7 seg cátodo común')}${btn('D7:1', 'Display 7 seg ánodo común')}</details>
+    el.innerHTML = `<details open><summary>Componentes</summary>${btn('R', 'Resistencia')}${btn('LED:red', 'LED rojo')}${btn('LED:green', 'LED verde')}${btn('LED:yellow', 'LED amarillo')}${btn('C', 'Condensador')}${btn('PUSH', 'Pulsador')}${btn('CLK', 'Generador de reloj')}${btn('DIPSW:4', 'Microinterruptor 4')}${btn('DIPSW:8', 'Microinterruptor 8')}${btn('DIPSW:10', 'Microinterruptor 10')}${btn('D7:0', 'Display 7 seg cátodo común')}${btn('D7:1', 'Display 7 seg ánodo común')}</details>
     <details open><summary>Cables</summary>${UI.WIRECOLORS.map(c => btn('WIRE:' + c[0], 'Cable ' + c[1])).join('')}</details>
     <details open><summary>Integrados</summary>${ics.map(d => btn('IC:' + d.id, d.name, d.desc)).join('')}</details>
     <details open><summary>Instrumentos</summary>${btn('DMM', 'Multímetro')}${btn('LP', 'Sonda lógica')}${btn('LA', 'Analizador lógico')}</details>
@@ -180,7 +181,7 @@ B.Editor = class {
     return hole(c, br);
   }
   shiftKey(k, dc, dr) { const p = B.parseKey(k); if (p.t !== 'h') return null; const c = p.col + dc, ri = ROWS.indexOf(p.row) + dr; if (c < 1 || c > COLS || ri < 0 || ri >= ROWS.length) return null; return hole(c, ROWS[ri]); }
-  colSpan(it) { return it.type === 'IC' ? DSim.IC[it.ic].n / 2 : it.type === 'PUSH' ? 2 : it.type === 'DIPSW' ? (it.n || 8) : it.type === 'D7' ? 5 : 1; }
+  colSpan(it) { return it.type === 'IC' ? DSim.IC[it.ic].n / 2 : (it.type === 'PUSH' || it.type === 'CLK') ? (it.type === 'CLK' ? 3 : 2) : it.type === 'DIPSW' ? (it.n || 8) : it.type === 'D7' ? 5 : 1; }
   dropPart(t, d, preview) {
     const [ty, arg] = t.split(':'), b = this.board, add = (o) => { if (preview) { o.id = 'ghost'; this.ghost = o; return o; } if (o.type !== 'WIRE') { const same = (x) => b.items.some(q => q !== o && q.type === x.type && (x.col !== undefined ? q.col === x.col : q.a === x.a || (x.tip && q.tip === x.tip))); let n = 0; while (same(o) && n++ < 40) { if (o.col !== undefined) o.col = Math.min(COLS - this.colSpan(o) + 1, o.col + this.colSpan(o) + 1); else if (o.a && o.b) { const na = this.shiftKey(o.a, 1, 0), nb = this.shiftKey(o.b, 1, 0); if (!na || !nb) break; o.a = na; o.b = nb; } else break; } }
       o.id = 'b' + b.nid++; b.items.push(o); this.sel = o.id; return o; };
@@ -192,6 +193,7 @@ B.Editor = class {
     const span = (n) => { const c1 = c0 + n <= COLS ? c0 + n : c0 - n; return hole(c1, row); };
     if (ty === 'IC') { const dd = DSim.IC[arg]; add({ type: 'IC', ic: arg, col: Math.min(c0, COLS - dd.n / 2 + 1), label: 'U' + (b.items.filter(i => i.type === 'IC').length + 1) }); }
     else if (ty === 'PUSH') add({ type: 'PUSH', col: Math.min(c0, COLS - 2) });
+    else if (ty === 'CLK') add({ type: 'CLK', col: Math.min(c0, COLS - 2), hz: '1', duty: 50 });
     else if (ty === 'DIPSW') { const n = +arg || 8; add({ type: 'DIPSW', n, col: Math.min(c0, COLS - n + 1), st: new Array(n).fill(0) }); }
     else if (ty === 'D7') add({ type: 'D7', col: Math.min(c0, COLS - 4), ca: arg === '1' ? 1 : 0 });
     else if (ty === 'R') add({ type: 'R', a: hh, b: span(4), v: '330' });
@@ -289,7 +291,7 @@ B.Editor = class {
     const add = (o) => { o.id = 'b' + b.nid++; b.items.push(o); this.sel = o.id; return o; };
     if (ty === 'IC') { if (p.t !== 'h') return this.hint('El integrado debe ir en la zona central de la protoboard.'); const d = DSim.IC[arg]; if (p.col + d.n / 2 - 1 > COLS) return this.hint('No cabe: se sale de la placa.');
       const n = b.items.filter(i => i.type === 'IC').length + 1; add({ type: 'IC', ic: arg, col: p.col, label: 'U' + n }); this.finish(); return; }
-    if (ty === 'PUSH' || ty === 'DIPSW' || ty === 'D7') { if (p.t !== 'h') return; const w = ty === 'PUSH' ? 2 : ty === 'DIPSW' ? (+arg || 8) - 1 : 4; if (p.col + w > COLS) return this.hint('No cabe en esa posición.'); add(ty === 'DIPSW' ? { type: ty, n: +arg || 8, col: p.col, st: new Array(+arg || 8).fill(0) } : { type: ty, col: p.col, ca: arg === '1' ? 1 : 0 }); this.finish(); return; }
+    if (ty === 'PUSH' || ty === 'DIPSW' || ty === 'D7' || ty === 'CLK') { if (p.t !== 'h') return; const w = ty === 'CLK' ? 2 : ty === 'PUSH' ? 2 : ty === 'DIPSW' ? (+arg || 8) - 1 : 4; if (p.col + w > COLS) return this.hint('No cabe en esa posición.'); add(ty === 'CLK' ? { type: 'CLK', col: p.col, hz: '1', duty: 50 } : ty === 'DIPSW' ? { type: ty, n: +arg || 8, col: p.col, st: new Array(+arg || 8).fill(0) } : { type: ty, col: p.col, ca: arg === '1' ? 1 : 0 }); this.finish(); return; }
     if (ty === 'LP') { add({ type: 'LP', tip: k }); this.finish(); return; }
     if (ty === 'LA') { if (!this.laItem) { this.laItem = add({ type: 'LA', ch: [] }); } this.laItem.ch.push(k); if (this.laItem.ch.length >= 8) { this.laItem = null; this.finish(); } else { this.hint(`Canal ${this.laItem.ch.length + 1}: haz clic en el agujero (Esc para terminar).`); this.recompile(false); } this.dirty = true; return; }
     if (ty === 'WIRE') { this.wf = { from: k, pts: [], color: arg }; this.hint('Cable: pica en zonas libres para crear codos y termina en un agujero. Esc cancela.'); this.dirty = true; return; }
@@ -300,7 +302,7 @@ B.Editor = class {
     else if (ty === 'WIRE') add({ type: 'WIRE', a, b: c, color: arg }); else if (ty === 'DMM' || ty === 'DMMA') add({ type: 'DMM', red: a, black: c, mode: ty === 'DMMA' ? 'A' : 'V' });
     this.finish();
   }
-  finish() { this.laItem = null; const keep = this.tool; this.pend = { pts: [] }; if (!['IC', 'PUSH', 'DIPSW', 'D7', 'LP', 'LA', 'DMM', 'DMMA'].includes(keep.split(':')[0])) { /* seguir colocando el mismo tipo */ } else if (!this.multi) { this.cancelTool(); } this.changed(); }
+  finish() { this.laItem = null; const keep = this.tool; this.pend = { pts: [] }; if (!['IC', 'PUSH', 'CLK', 'DIPSW', 'D7', 'LP', 'LA', 'DMM', 'DMMA'].includes(keep.split(':')[0])) { /* seguir colocando el mismo tipo */ } else if (!this.multi) { this.cancelTool(); } this.changed(); }
   removeSel() { if (this.sel === 'mcu') { this.board.mcu = null; this.sel = null; this.changed(); this.onChange && this.onChange('mcu'); return; } this.board.items = this.board.items.filter(i => i.id !== this.sel); this.sel = null; this.changed(); }
   changed() { this.recompile(); this.showProps(); this.onChange && this.onChange('board'); }
   itemsOf(type) { return this.board.items.filter(i => i.type === type); }
@@ -355,6 +357,7 @@ B.Editor = class {
     if (it) {
       h += `<div class="ph">${esc(it.type === 'IC' ? DSim.IC[it.ic].name : B.PARTS[it.type].name)}</div>`;
       if (it.type === 'R' || it.type === 'C') h += `<label>Valor (${it.type === 'R' ? 'Ω' : 'F'})<input data-ip="v" value="${esc(it.v)}"></label>`;
+      if (it.type === 'CLK') h += `<p class="mut">Módulo de 3 patas: VCC (3,3–5 V), CLK (salida) y GND. Sin alimentación no genera señal.</p><label>Frecuencia (Hz)<input data-ip="hz" value="${esc(it.hz || '1')}"></label><label>Ciclo de trabajo (%)<input data-ip="duty" value="${esc(String(it.duty || 50))}"></label>`;
       if (it.type === 'LED') h += `<label>Color<select data-ip="color">${['red', 'green', 'yellow', 'blue'].map(c => `<option ${it.color === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>`;
       if (it.type === 'IC') h += `<p class="mut">${esc(DSim.IC[it.ic].desc)}</p>${dsLinkHTML(it.ic)}<label>Referencia<input data-ip="label" value="${esc(it.label)}"></label><div id="pintab"></div>`;
       if (it.type === 'DMM') h += `<label>Modo<select data-ip="mode"><option value="V" ${it.mode === 'V' ? 'selected' : ''}>Voltios (DC)</option><option value="A" ${it.mode === 'A' ? 'selected' : ''}>Amperios (en serie)</option><option value="R" ${it.mode === 'R' ? 'selected' : ''}>Ohmios (sin alimentar)</option></select></label><div class="dmm" id="dmmv">—</div><button class="b sm prim" data-a="logm">Anotar medida en el cuaderno</button><label>Condición de la medida<input id="logc" placeholder="p. ej. pulsador sin pulsar"></label>`;
@@ -507,6 +510,10 @@ B.Editor = class {
     }
     if (it.type === 'IC') return G(this.drawIC(it, ix, sel));
     if (it.type === 'PUSH') { const x = B.hx(it.col) - 4, w = 2 * P + 8, y = 172 - 4, hh = 214 - 172 + 8, pr = this.pressed === it; return G(`<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="4" fill="#4a4d4a" stroke="#222"/><circle data-push="${it.id}" cx="${x + w / 2}" cy="${y + hh / 2}" r="12" fill="${pr ? '#7a7d7a' : '#2c2e2c'}" stroke="#111" style="cursor:pointer"/>` + selr(x, y, w, hh)); }
+    if (it.type === 'CLK') { const x = B.hx(it.col) - 9, w = 2 * P + 18, y = 166, hh = 58, sp = this.sim.parts[this.refs[it.id]], hi = sp && sp.on && sp.val, pw = sp && sp.on;
+      let s = `<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="3" fill="#33425b" stroke="#1b2536"/><rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="22" rx="2" fill="#26334a"/><text x="${x + w / 2}" y="${y + 13}" font-size="6.6" font-weight="700" fill="#e8ecf4" text-anchor="middle">RELOJ</text><text x="${x + w / 2}" y="${y + 22}" font-size="6.6" fill="#b9c2d0" text-anchor="middle">${esc(String(it.hz || 1))} Hz</text><circle cx="${x + w / 2}" cy="${y + 36}" r="5" fill="${hi ? '#ff9a3c' : pw ? '#5a3a1e' : '#3b3f46'}" stroke="#111"/>`;
+      ['VCC', 'CLK', 'GND'].forEach((n, i) => { const cx = B.hx(it.col + i); s += `<text x="${cx}" y="${y + 52}" font-size="6.4" font-weight="700" text-anchor="middle" fill="${i === 0 ? '#ffb3a1' : i === 2 ? '#b9c2d0' : '#fff'}">${n}</text><circle cx="${cx}" cy="${y + 44 - 0}" r="1.6" fill="#c9ccc9"/>`; });
+      return G(s + selr(x, y, w, hh)); }
     if (it.type === 'DIPSW') { const n = it.n || 8, x = B.hx(it.col) - 9, w = (n - 1) * P + 18, y = 166, hh = 58; it.st = it.st || new Array(n).fill(0);
       let s = `<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="3" fill="#C23B2E" stroke="#6b1d16"/><rect x="${x + 4}" y="${y + 12}" width="${w - 8}" height="26" rx="2" fill="#8c2a21"/><text x="${x + 5}" y="${y + 9}" font-size="7" font-weight="700" fill="#fff">ON ▲</text><text x="${x + w - 4}" y="${y + 9}" font-size="6" text-anchor="end" fill="#f4d9d5">DIP-${n}</text>`;
       for (let i = 0; i < n; i++) { const on = it.st[i], cx = B.hx(it.col + i); s += `<rect x="${cx - 4.5}" y="${y + 14}" width="9" height="22" rx="1.5" fill="#5a1b15"/><rect data-dip="${it.id}:${i}" x="${cx - 4}" y="${on ? y + 15 : y + 25}" width="8" height="10" rx="1.5" fill="${on ? '#F4F1E8' : '#d7d2c4'}" stroke="#222" style="cursor:pointer"/><text x="${cx}" y="${y + 50}" font-size="8" font-weight="700" text-anchor="middle" fill="#f4f1e8">${i + 1}</text>`; }
