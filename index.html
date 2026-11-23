@@ -154,8 +154,6 @@ E.dsFile = (id) => { id = String(id); if (id.indexOf('555') >= 0) return 'NE555'
 E.dsMaker = (id) => (String(id).indexOf('555') >= 0 ? 'STMicroelectronics' : 'NXP');
 E.dsHref = (id) => { const f = E.dsFile(id); return f ? 'https://www.alldatasheet.es/view.jsp?Searchword=' + encodeURIComponent(f + ' ' + E.dsMaker(id)) : null; };
 E.dsExact = () => true;
-E.DS_EXTRA = {};
-E.dsExtra = (k) => '../' + encodeURI(E.DS_EXTRA[k]);
 
 /* ---------- Definiciones de integrados ---------- */
 const IC = {};
@@ -1696,7 +1694,7 @@ B.Editor = class {
     const t = document.elementsFromPoint(e.clientX, e.clientY).find(x => this.svg.contains(x) && x.closest('[data-id],[data-mbbox],[data-mcubox]')) || e.target, g = t.closest && t.closest('[data-id]'); const cv = this.root.querySelector('.cv');
     if (t.closest && t.closest('[data-mbbox]')) { const m = this.board.mb, opts = [{ v: '0', t: '0 V' }, { v: '3.3', t: '3,3 V' }, { v: '5', t: '5 V' }];
       UI.pop(cv, e.clientX, e.clientY, 'Fuente MB102', [{ k: 'on', label: 'Conectada (interruptor)', type: 'check', value: m.on }, { k: 'top', label: 'Carril superior', type: 'sel', opts, value: String(m.top) }, { k: 'bot', label: 'Carril inferior', type: 'sel', opts, value: String(m.bot) }],
-        (k, v) => { m[k] = k === 'on' ? v : +v; this.changed(); }, { after: `<p><a class="dsl" href="${DSim.dsExtra('MB102')}" target="_blank" rel="noopener">Hoja de datos (PDF)</a></p>` }); return; }
+        (k, v) => { m[k] = k === 'on' ? v : +v; this.changed(); }); return; }
     if (t.closest && t.closest('[data-mcubox]')) { this.sel = 'mcu'; this.showProps(); return; }
     if (!g) return; const it = this.board.items.find(i => i.id === g.dataset.id); if (!it) return; this.sel = it.id; this.dirty = true;
     const F = [], nm = it.type === 'IC' ? DSim.IC[it.ic].name : B.PARTS[it.type].name; let before = '';
@@ -3087,11 +3085,10 @@ App.touch = () => { App.fileDirty = true; autoStatus(); clearTimeout(App._sv); A
 
 /* ---------- inicio ---------- */
 const icChip = (id) => { const h = DSim.dsHref(id); const nm = DSim.IC[id] ? DSim.IC[id].name : id; return h ? `<a class="chipl" href="${h}" target="_blank" rel="noopener" title="Hoja de datos en alldatasheet.es (versión HC)">${esc(nm)}</a>` : `<span class="chipl off" title="No hay hoja de datos en la carpeta">${esc(nm)}</span>`; };
-const extraChip = (k) => ({ MB102: 'Fuente MB102', PROTO: 'Protoboard 830', SONDA: 'Sonda lógica', LA: 'Analizador lógico', ALH: 'Alhambra II (esquemas)', D7: 'Display 5161' }[k]);
 function buildPractices() {
   const h = $('#ov-prac');
   const free = Practicas.free, frow = `<div class="prow free ${App.practice === 'LIBRE' ? 'cur' : ''}"><div class="pn">Libre</div><div class="pb"><div class="pt">${esc(free.title)}</div><div class="pd">${esc(free.brief)}</div><div class="pm">Sin enunciado ni informe guiado · empieza en <b>${Practicas.TOOLNAME[free.tool]}</b></div></div><button class="b ${App.practice === 'LIBRE' ? 'prim' : ''}" data-open="LIBRE">Abrir</button></div>`;
-  const rows = frow + Practicas.list.map(p => `<div class="prow ${p.id === App.practice ? 'cur' : ''}"><div class="pn">${p.id}</div><div class="pb"><div class="pt">${esc(p.title)}</div><div class="pd">${esc(p.brief)}</div><div class="pm">Tema ${p.tema} · ${esc(p.ra)} · empieza en <b>${Practicas.TOOLNAME[p.tool]}</b></div>${(p.ics.length || p.extra.length) ? `<div class="pm">Material: ${p.ics.map(icChip).join(' ')} ${p.extra.filter(k => DSim.DS_EXTRA[k]).map(k => `<a class="chipl" href="${DSim.dsExtra(k)}" target="_blank" rel="noopener">${extraChip(k)}</a>`).join(' ')}</div>` : ''}</div><div class="pbtn"><button class="b ${p.id === App.practice ? 'prim' : ''}" data-open="${p.id}">Abrir</button><button class="b" data-enun="${p.id}">Enunciado</button></div></div>`).join('');
+  const rows = frow + Practicas.list.map(p => `<div class="prow ${p.id === App.practice ? 'cur' : ''}"><div class="pn">${p.id}</div><div class="pb"><div class="pt">${esc(p.title)}</div><div class="pd">${esc(p.brief)}</div><div class="pm">Tema ${p.tema} · ${esc(p.ra)} · empieza en <b>${Practicas.TOOLNAME[p.tool]}</b></div>${p.ics.length ? `<div class="pm">Material: ${p.ics.map(icChip).join(' ')}</div>` : ''}</div><div class="pbtn"><button class="b ${p.id === App.practice ? 'prim' : ''}" data-open="${p.id}">Abrir</button><button class="b" data-enun="${p.id}">Enunciado</button></div></div>`).join('');
   h.innerHTML = `<div class="ovc"><button class="ovx" data-close title="Cerrar (Esc)">×</button><div class="kick">EQUIPOS MICROPROGRAMABLES</div><h3>Prácticas</h3>
     <p class="lead">Elige una práctica para ver su enunciado y el material. El espacio de trabajo siempre empieza vacío: tú montas el circuito, tú simulas y tú mides.</p>
     <div class="plgrid"><section class="plist">${rows}</section><aside>
@@ -3105,7 +3102,7 @@ function buildEnun(id) {
   const box = (b) => { const k = /SEGURIDAD|ANTES DE DAR TENSI|ANTES DE EMPEZAR/.test(b.t) ? 'warn' : /TERMINADA/.test(b.t) ? 'chk' : /ENUNCIADO/.test(b.t) ? 'enu' : '';
     const body = k === 'chk' ? '<ul>' + b.p.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : b.p.map(x => `<p class="${/^[–-] /.test(x) ? 'bl' : ''}">${esc(x)}</p>`).join('');
     return `<div class="ebox ${k}"><div class="eh">${esc(b.t)}</div>${body}</div>`; };
-  const cur = App.practice === id, mat = p.ics.map(icChip).concat(p.extra.filter(k => DSim.DS_EXTRA[k]).map(k => `<a class="chipl" href="${DSim.dsExtra(k)}" target="_blank" rel="noopener">${extraChip(k)}</a>`)).join(' ');
+  const cur = App.practice === id, mat = p.ics.map(icChip).join(' ');
   h.innerHTML = `<div class="ovc enun"><button class="ovx" data-close title="Cerrar (Esc)">×</button><div class="kick">PRÁCTICA ${p.id} · TEMA ${p.tema} · ${esc(p.ra)}</div><h3>${esc(p.title)}</h3>
     ${E.boxes.map(box).join('')}${mat ? `<p class="pm">Hojas de datos: ${mat}</p>` : ''}
     ${E.heads.length ? `<div class="ebox"><div class="eh">APARTADOS DEL CUADERNO</div><ol class="eap">${E.heads.map(x => `<li>${esc(x.replace(/^\d+\.\s*/, ''))}</li>`).join('')}</ol><p class="mut">En el simulador se hace lo que corresponde a cada apartado; las respuestas escritas van en el cuaderno y en «Informe».</p></div>` : ''}
@@ -3117,7 +3114,7 @@ function updatePbar() {
   const b = $('#pbar'), p = Practicas.get(App.practice);
   const show = p && App.page !== 'report';
   b.hidden = !show; if (!show) return;
-  const mat = p.ics.map(icChip).concat(p.extra.filter(k => DSim.DS_EXTRA[k]).map(k => `<a class="chipl" href="${DSim.dsExtra(k)}" target="_blank" rel="noopener">${extraChip(k)}</a>`)).join(' ');
+  const mat = p.ics.map(icChip).join(' ');
   b.innerHTML = `<div class="pb1"><b>${p.free ? 'Modo libre' : 'Práctica ' + p.id}</b> · ${p.free ? '' : esc(p.title)} <span class="mut">— ${esc(p.brief)}</span> ${p.free ? '' : '<button class="b sm" id="pbe">Enunciado</button>'} <button class="b sm" id="pbt">${p.free ? 'Cómo se trabaja ▾' : 'Método de trabajo ▾'}</button></div>${mat ? `<div class="pb2">Hojas de datos: ${mat}</div>` : ''}<ol class="pb3" id="pbs" hidden>${p.pasos.map(x => `<li>${esc(x)}</li>`).join('')}</ol>`;
   $('#pbt').onclick = () => { const o = $('#pbs'); o.hidden = !o.hidden; };
   const be = $('#pbe'); if (be) be.onclick = () => { App.enunId = App.practice; openOv('ov-enun'); };
@@ -3145,7 +3142,6 @@ function buildGuide() {
   const g = $('#ov-guide');
   const icrows = Object.keys(DSim.IC).map(k => { const d = DSim.IC[k], h = DSim.dsHref(k); const f = DSim.dsFile(k); if (!f) return `<tr><td><b>${esc(d.name)}</b></td><td>${esc(d.desc)}</td><td class="mut">sin versión HC; búscala en alldatasheet.es</td></tr>`;
     return `<tr><td><b>${esc(d.name)}</b></td><td>${esc(d.desc)}</td><td><a href="${h}" target="_blank" rel="noopener">${esc(f)} · ${DSim.dsMaker(k)} (alldatasheet.es)</a></td></tr>`; }).join('');
-  const L = (k, t) => `<a href="${DSim.dsExtra(k)}" target="_blank" rel="noopener">${t}</a>`;
   g.innerHTML = `<button class="ovx" data-close title="Cerrar (Esc)">×</button><div class="guide"><nav class="gtoc"><div class="ih">Contenido</div>${[['g1', '1 · Qué es y cómo se trabaja'], ['g2', '2 · Tablas y Karnaugh'], ['g3', '3 · Esquema lógico'], ['g4', '4 · Protoboard'], ['g5', '5 · Instrumentos'], ['g6', '6 · Programar Arduino / ESP32'], ['g7', '7 · FPGA Alhambra II'], ['g8', '8 · Informe de práctica'], ['g9', '9 · Errores que puedes cometer'], ['g10', '10 · Límites del simulador'], ['g11', '11 · Atajos de teclado'], ['g12', '12 · Hojas de datos']].map(x => `<a href="#" data-sc="${x[0]}">${x[1]}</a>`).join('')}</nav>
   <article>
   <h1>Guía de uso</h1><p class="lead">El simulador no monta nada por ti: parte de un espacio vacío y trabaja con las mismas piezas y medidas que en el taller. Deja cometer errores y los muestra como los vería el instrumento.</p>

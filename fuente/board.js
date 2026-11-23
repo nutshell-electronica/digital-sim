@@ -208,7 +208,7 @@ B.Editor = class {
     const t = document.elementsFromPoint(e.clientX, e.clientY).find(x => this.svg.contains(x) && x.closest('[data-id],[data-mbbox],[data-mcubox]')) || e.target, g = t.closest && t.closest('[data-id]'); const cv = this.root.querySelector('.cv');
     if (t.closest && t.closest('[data-mbbox]')) { const m = this.board.mb, opts = [{ v: '0', t: '0 V' }, { v: '3.3', t: '3,3 V' }, { v: '5', t: '5 V' }];
       UI.pop(cv, e.clientX, e.clientY, 'Fuente MB102', [{ k: 'on', label: 'Conectada (interruptor)', type: 'check', value: m.on }, { k: 'top', label: 'Carril superior', type: 'sel', opts, value: String(m.top) }, { k: 'bot', label: 'Carril inferior', type: 'sel', opts, value: String(m.bot) }],
-        (k, v) => { m[k] = k === 'on' ? v : +v; this.changed(); }, { after: `<p><a class="dsl" href="${DSim.dsExtra('MB102')}" target="_blank" rel="noopener">Hoja de datos (PDF)</a></p>` }); return; }
+        (k, v) => { m[k] = k === 'on' ? v : +v; this.changed(); }); return; }
     if (t.closest && t.closest('[data-mcubox]')) { this.sel = 'mcu'; this.showProps(); return; }
     if (!g) return; const it = this.board.items.find(i => i.id === g.dataset.id); if (!it) return; this.sel = it.id; this.dirty = true;
     const F = [], nm = it.type === 'IC' ? DSim.IC[it.ic].name : B.PARTS[it.type].name; let before = '';
