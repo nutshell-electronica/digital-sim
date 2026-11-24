@@ -173,6 +173,7 @@ S.Editor = class {
       <button class="b prim" data-a="run">▶ Simular</button><button class="b" data-a="step">Paso</button><button class="b" data-a="reset">Reiniciar</button>
       <label class="inl">Vel. <select data-a="speed"><option value="0.01">0,01×</option><option value="0.1">0,1×</option><option value="1" selected>1×</option><option value="10">10×</option><option value="100">100×</option></select></label>
       <label class="inl">Paso <select data-a="dt"><option value="1e-5">10 µs</option><option value="5e-5" selected>50 µs</option><option value="1e-4">100 µs</option><option value="1e-3">1 ms</option></select></label>
+      <button class="b" data-a="auto" title="Ajusta velocidad, paso y ventana del analizador al reloj del circuito, para que la señal cruce la pantalla en unos 6 s">Autoajuste</button>
       <label class="inl" ${this.fpga ? "hidden" : ""}><input type="checkbox" data-a="ap" checked> alimentar integrados</label>
       <span class="sp"></span><span class="tstat" id="tstat">t = 0</span>
       <button class="b" data-a="tt">Tabla de verdad</button><button class="b" data-a="fit">Ajustar vista</button><button class="b" data-a="clear">Vaciar</button><button class="b" data-a="png">Captura</button>
@@ -208,6 +209,7 @@ S.Editor = class {
   }
   hint(t) { this.root.querySelector('#hint').textContent = t; }
   action(a, el) {
+    if (a === 'auto') { Timing.autoset(this); return; }
     if (a === 'run') { this.running = !this.running; el.textContent = this.running ? '❚❚ Pausar' : '▶ Simular'; }
     else if (a === 'step') { this.sim.run(this.dt * 20); this.dirty = true; }
     else if (a === 'reset') this.recompile();
@@ -340,7 +342,7 @@ S.Editor = class {
     const last = this.lastTs || ts; this.lastTs = ts;
     if (this.running) {
       const want = Math.min(0.05, (ts - last) / 1000) * this.speed, t0 = performance.now(); let done = 0;
-      const n = Math.ceil(want / this.dt);
+      this.acc = (this.acc || 0) + want / this.dt; const n = Math.floor(this.acc); this.acc -= n;
       for (let i = 0; i < n; i++) { this.sim.step(); if ((i & 63) === 0 && performance.now() - t0 > 14) break; }
       this.checkFire();
       this.dirty = true;

@@ -8,6 +8,9 @@ const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
 const COLS = 63, P = 18, X0 = 52;
 const ROWY = { j: 100, i: 118, h: 136, g: 154, f: 172, e: 214, d: 232, c: 250, b: 268, a: 286 };
 const ROWS = ['j', 'i', 'h', 'g', 'f', 'e', 'd', 'c', 'b', 'a'];
+/* filas de un componente de varias patas: lo = fila de abajo (patas 1..n/2 de un integrado), hi = fila de arriba. Por defecto e/f, a caballo del canal central; el alumno puede colocarlo en cualquier otro par de filas */
+B.rowsOf = (it) => { const r = it.r === undefined ? 5 : it.r; return { lo: ROWS[r], hi: ROWS[r - 1], r }; };
+const rOfRow = (row) => { if (row === 'e' || row === 'f') return 5; return Math.max(1, Math.min(9, ROWS.indexOf(row))); };
 const RAILY = { 'T+': 34, 'T-': 52, 'B-': 332, 'B+': 350 };
 B.hx = (col) => X0 + (col - 1) * P;
 const railX = (k) => X0 + 10 + k * P + Math.floor(k / 5) * 22;
@@ -42,7 +45,7 @@ B.flame = (x, y, msg, sc = 1) => `<g transform="translate(${x},${y}) scale(${sc}
 B.newBoard = () => ({ items: [], nid: 1, mb: { on: true, top: 5, bot: 5 }, mcu: null });
 
 B.pinKeys = (it) => { // llaves de hoyos por patilla (índice = nº de patilla - 1)
-  if (it.type === 'IC') { const d = DSim.IC[it.ic], h = d.n / 2, r = []; for (let k = 1; k <= d.n; k++) r.push(k <= h ? hole(it.col + k - 1, 'e') : hole(it.col + (d.n - k), 'f')); return r; }
+  if (it.type === 'IC') { const d = DSim.IC[it.ic], h = d.n / 2, r = [], R = B.rowsOf(it); for (let k = 1; k <= d.n; k++) r.push(k <= h ? hole(it.col + k - 1, R.lo) : hole(it.col + (d.n - k), R.hi)); return r; }
   return null;
 };
 
@@ -68,11 +71,11 @@ B.compile = function (board, ctx) {
       case 'C': refs[it.id] = push(it, { type: 'C', c: Schem.parseVal(it.v) || 1e-9, pinIds: [N(it.a), N(it.b)] }); break;
       case 'LED': refs[it.id] = push(it, { type: 'LED', color: it.color, pinIds: [N(it.a), N(it.b)] }); break;
       case 'IC': { const keys = B.pinKeys(it), d = DSim.IC[it.ic]; refs[it.id] = push(it, { type: 'IC', ic: it.ic, label: it.label || d.name, pinIds: keys.map(k => used.has(N(k)) || true ? N(k) : null) }); break; }
-      case 'PUSH': { const a = hole(it.col, 'e'), b = hole(it.col + 2, 'e'), c = hole(it.col, 'f'), e = hole(it.col + 2, 'f'); nb.join(N(a), N(b)); nb.join(N(c), N(e)); refs[it.id] = push(it, { type: 'SW', closed: false, pinIds: [N(a), N(c)] }); break; }
-      case 'DIPSW': { const r = [], n = it.n || 8; it.st = it.st || new Array(n).fill(0); for (let i = 0; i < n; i++) r.push(push(it, { type: 'SW', closed: !!it.st[i], pinIds: [N(hole(it.col + i, 'e')), N(hole(it.col + i, 'f'))] })); refs[it.id] = r; break; }
-      case 'CLK': { const c = it.col, hz = Math.min(1e5, Math.max(0.01, Schem.parseVal(it.hz) || 1)), du = Math.min(95, Math.max(5, +it.duty || 50)) / 100; refs[it.id] = push(it, { type: 'SRC', mode: 'clock', pwr: true, hz, duty: du, rout: 60, pinIds: [N(hole(c + 1, 'e')), N(hole(c, 'e')), N(hole(c + 2, 'e'))] }); break; }
-      case 'D7': { const c = it.col, ks = [hole(c + 3, 'f'), hole(c + 4, 'f'), hole(c + 3, 'e'), hole(c + 1, 'e'), hole(c, 'e'), hole(c + 1, 'f'), hole(c, 'f'), hole(c + 4, 'e'), hole(c + 2, 'e')];
-        nb.join(N(hole(c + 2, 'e')), N(hole(c + 2, 'f'))); refs[it.id] = push(it, { type: 'DISP7', color: 'red', ca: +it.ca, pinIds: ks.map(N) }); break; }
+      case 'PUSH': { const R = B.rowsOf(it); const a = hole(it.col, R.lo), b = hole(it.col + 2, R.lo), c = hole(it.col, R.hi), e = hole(it.col + 2, R.hi); nb.join(N(a), N(b)); nb.join(N(c), N(e)); refs[it.id] = push(it, { type: 'SW', closed: false, pinIds: [N(a), N(c)] }); break; }
+      case 'DIPSW': { const R = B.rowsOf(it); const r = [], n = it.n || 8; it.st = it.st || new Array(n).fill(0); for (let i = 0; i < n; i++) r.push(push(it, { type: 'SW', closed: !!it.st[i], pinIds: [N(hole(it.col + i, R.lo)), N(hole(it.col + i, R.hi))] })); refs[it.id] = r; break; }
+      case 'CLK': { const R = B.rowsOf(it); const c = it.col, hz = Math.min(1e5, Math.max(0.01, Schem.parseVal(it.hz) || 1)), du = Math.min(95, Math.max(5, +it.duty || 50)) / 100; refs[it.id] = push(it, { type: 'SRC', mode: 'clock', pwr: true, hz, duty: du, rout: 60, pinIds: [N(hole(c + 1, R.lo)), N(hole(c, R.lo)), N(hole(c + 2, R.lo))] }); break; }
+      case 'D7': { const R = B.rowsOf(it); const c = it.col, ks = [hole(c + 3, R.hi), hole(c + 4, R.hi), hole(c + 3, R.lo), hole(c + 1, R.lo), hole(c, R.lo), hole(c + 1, R.hi), hole(c, R.hi), hole(c + 4, R.lo), hole(c + 2, R.lo)];
+        nb.join(N(hole(c + 2, R.lo)), N(hole(c + 2, R.hi))); refs[it.id] = push(it, { type: 'DISP7', color: 'red', ca: +it.ca, pinIds: ks.map(N) }); break; }
       case 'DMM': if (it.red && it.black && it.mode !== 'R') refs[it.id] = push(it, { type: it.mode === 'A' ? 'AMM' : 'VM', pinIds: [N(it.red), N(it.black)] }); break;
       case 'LP': break;
     }
@@ -102,6 +105,7 @@ B.Editor = class {
       <button class="b prim" data-a="run">▶ Simular</button><button class="b" data-a="reset">Reiniciar</button>
       <label class="inl">Velocidad <select data-a="speed"><option value="0.01">0,01×</option><option value="0.1">0,1×</option><option value="1" selected>1×</option><option value="10">10×</option><option value="100">100×</option></select></label>
       <label class="inl">Paso <select data-a="dt"><option value="1e-5">10 µs</option><option value="5e-5" selected>50 µs</option><option value="1e-4">100 µs</option><option value="1e-3">1 ms</option></select></label>
+      <button class="b" data-a="auto" title="Ajusta velocidad, paso y ventana del analizador al reloj del circuito, para que la señal cruce la pantalla en unos 6 s">Autoajuste</button>
       <span class="sp"></span><span class="tstat" id="btstat">t = 0</span><button class="b" data-a="fit">Ajustar vista</button><button class="b" data-a="png">Captura</button><button class="b" data-a="clear">Vaciar</button></div>
     <div class="cv"><svg id="bsv" xmlns="${NS}"></svg><div class="hint" id="bhint">Arrastra piezas del catálogo a la placa. Arrastra de un agujero a otro para tender un cable. Doble clic en una pieza para editar su valor. Rueda: zoom.</div><div class="tip" id="btip"></div></div>
     <div class="tpanel"><canvas id="btc"></canvas><div class="tp-b"><button class="b sm" data-a="tfollow">Seguir</button><button class="b sm" data-a="tcur">Quitar cursores</button><button class="b sm" data-a="tanalog">Analógico</button><span id="laMeas" class="mut">Analizador lógico: pon pinzas en los agujeros (8 canales). Rueda: zoom.</span></div></div></div>
@@ -150,6 +154,7 @@ B.Editor = class {
   }
   cancelTool() { this.wf = null; this.tool = null; this.pend = null; this.root.querySelectorAll('#bpal .pi').forEach(x => x.classList.remove('on')); this.dirty = true; }
   action(a, el) {
+    if (a === 'auto') { Timing.autoset(this); return; }
     if (a === 'run') { this.running = !this.running; el.textContent = this.running ? '❚❚ Pausar' : '▶ Simular'; }
     else if (a === 'reset') this.recompile();
     else if (a === 'clear') { if (confirm('¿Vaciar la protoboard?')) { const m = this.board.mcu, mb = this.board.mb; this.board = B.newBoard(); this.board.mcu = m; this.board.mb = mb; this.sel = null; this.changed(); } }
@@ -183,7 +188,7 @@ B.Editor = class {
   shiftKey(k, dc, dr) { const p = B.parseKey(k); if (p.t !== 'h') return null; const c = p.col + dc, ri = ROWS.indexOf(p.row) + dr; if (c < 1 || c > COLS || ri < 0 || ri >= ROWS.length) return null; return hole(c, ROWS[ri]); }
   colSpan(it) { return it.type === 'IC' ? DSim.IC[it.ic].n / 2 : (it.type === 'PUSH' || it.type === 'CLK') ? (it.type === 'CLK' ? 3 : 2) : it.type === 'DIPSW' ? (it.n || 8) : it.type === 'D7' ? 5 : 1; }
   dropPart(t, d, preview) {
-    const [ty, arg] = t.split(':'), b = this.board, add = (o) => { if (preview) { o.id = 'ghost'; this.ghost = o; return o; } if (o.type !== 'WIRE') { const same = (x) => b.items.some(q => q !== o && q.type === x.type && (x.col !== undefined ? q.col === x.col : q.a === x.a || (x.tip && q.tip === x.tip))); let n = 0; while (same(o) && n++ < 40) { if (o.col !== undefined) o.col = Math.min(COLS - this.colSpan(o) + 1, o.col + this.colSpan(o) + 1); else if (o.a && o.b) { const na = this.shiftKey(o.a, 1, 0), nb = this.shiftKey(o.b, 1, 0); if (!na || !nb) break; o.a = na; o.b = nb; } else break; } }
+    const [ty, arg] = t.split(':'), b = this.board, add = (o) => { if (preview) { o.id = 'ghost'; this.ghost = o; return o; } if (o.type !== 'WIRE') { const same = (x) => b.items.some(q => q !== o && q.type === x.type && (x.col !== undefined ? q.col === x.col && (q.r === undefined ? 5 : q.r) === (x.r === undefined ? 5 : x.r) : q.a === x.a || (x.tip && q.tip === x.tip))); let n = 0; while (same(o) && n++ < 40) { if (o.col !== undefined) o.col = Math.min(COLS - this.colSpan(o) + 1, o.col + this.colSpan(o) + 1); else if (o.a && o.b) { const na = this.shiftKey(o.a, 1, 0), nb = this.shiftKey(o.b, 1, 0); if (!na || !nb) break; o.a = na; o.b = nb; } else break; } }
       o.id = 'b' + b.nid++; b.items.push(o); this.sel = o.id; return o; };
     if (preview && (ty === 'MCU' || ty === 'MB102')) return;
     if (ty === 'MCU') { this.board.mcu = arg === 'none' ? null : { board: arg, code: this.board.mcu && this.board.mcu.code }; this.sel = this.board.mcu ? 'mcu' : null; this.changed(); this.onChange && this.onChange('mcu'); return; }
@@ -191,11 +196,11 @@ B.Editor = class {
     const k = this.nearestKey(d) || this.nearestHole(d), p = B.parseKey(k), hh = this.nearestHole(d), hp = B.parseKey(hh);
     const c0 = hp.col, row = hp.row, cl = (c) => Math.max(1, Math.min(COLS, c));
     const span = (n) => { const c1 = c0 + n <= COLS ? c0 + n : c0 - n; return hole(c1, row); };
-    if (ty === 'IC') { const dd = DSim.IC[arg]; add({ type: 'IC', ic: arg, col: Math.min(c0, COLS - dd.n / 2 + 1), label: 'U' + (b.items.filter(i => i.type === 'IC').length + 1) }); }
-    else if (ty === 'PUSH') add({ type: 'PUSH', col: Math.min(c0, COLS - 2) });
-    else if (ty === 'CLK') add({ type: 'CLK', col: Math.min(c0, COLS - 2), hz: '1', duty: 50 });
-    else if (ty === 'DIPSW') { const n = +arg || 8; add({ type: 'DIPSW', n, col: Math.min(c0, COLS - n + 1), st: new Array(n).fill(0) }); }
-    else if (ty === 'D7') add({ type: 'D7', col: Math.min(c0, COLS - 4), ca: arg === '1' ? 1 : 0 });
+    if (ty === 'IC') { const dd = DSim.IC[arg]; add({ type: 'IC', ic: arg, r: rOfRow(row), col: Math.min(c0, COLS - dd.n / 2 + 1), label: 'U' + (b.items.filter(i => i.type === 'IC').length + 1) }); }
+    else if (ty === 'PUSH') add({ type: 'PUSH', r: rOfRow(row), col: Math.min(c0, COLS - 2) });
+    else if (ty === 'CLK') add({ type: 'CLK', r: rOfRow(row), col: Math.min(c0, COLS - 2), hz: '1', duty: 50 });
+    else if (ty === 'DIPSW') { const n = +arg || 8; add({ type: 'DIPSW', n, r: rOfRow(row), col: Math.min(c0, COLS - n + 1), st: new Array(n).fill(0) }); }
+    else if (ty === 'D7') add({ type: 'D7', r: rOfRow(row), col: Math.min(c0, COLS - 4), ca: arg === '1' ? 1 : 0 });
     else if (ty === 'R') add({ type: 'R', a: hh, b: span(4), v: '330' });
     else if (ty === 'LED') add({ type: 'LED', a: hh, b: span(2), color: arg });
     else if (ty === 'C') add({ type: 'C', a: hh, b: span(3), v: '100u' });
@@ -271,7 +276,7 @@ B.Editor = class {
         else if (d.kind === 'wp') { it.pts[d.idx] = nudge(m); }
         else if (d.kind === 'end') { const k2 = this.nearestKey(m); if (k2 && (it.type === 'WIRE' || it.type === 'DMM' || it.type === 'LP' || B.parseKey(k2).t !== 's')) it[d.end] = k2; }
         else { const cur = this.nearestHole(m), g = B.parseKey(d.grab), c = B.parseKey(cur), dc = c.col - g.col, dr = ROWS.indexOf(c.row) - ROWS.indexOf(g.row), o = d.orig;
-          if (o.col !== undefined) it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dc));
+          if (o.col !== undefined) { it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dc)); if (['IC', 'PUSH', 'DIPSW', 'CLK', 'D7'].includes(o.type)) it.r = Math.max(1, Math.min(9, (o.r === undefined ? 5 : o.r) + dr)); }
           else if (o.type === 'LP') { const k2 = this.nearestKey(m); if (k2) it.tip = k2; }
           else if (o.type === 'LA') { /* el analizador es fijo; se mueven sus clips con los tiradores */ }
           else { const ends = o.type === 'DMM' ? ['red', 'black'] : o.type === 'LP' ? ['tip'] : ['a', 'b']; const nk = ends.map(q => this.shiftKey(o[q], dc, dr)); if (nk.every(Boolean)) ends.forEach((q, i) => it[q] = nk[i]); } }
@@ -290,8 +295,8 @@ B.Editor = class {
     const [ty, arg] = this.tool.split(':'), pd = this.pend, p = B.parseKey(k), b = this.board;
     const add = (o) => { o.id = 'b' + b.nid++; b.items.push(o); this.sel = o.id; return o; };
     if (ty === 'IC') { if (p.t !== 'h') return this.hint('El integrado debe ir en la zona central de la protoboard.'); const d = DSim.IC[arg]; if (p.col + d.n / 2 - 1 > COLS) return this.hint('No cabe: se sale de la placa.');
-      const n = b.items.filter(i => i.type === 'IC').length + 1; add({ type: 'IC', ic: arg, col: p.col, label: 'U' + n }); this.finish(); return; }
-    if (ty === 'PUSH' || ty === 'DIPSW' || ty === 'D7' || ty === 'CLK') { if (p.t !== 'h') return; const w = ty === 'CLK' ? 2 : ty === 'PUSH' ? 2 : ty === 'DIPSW' ? (+arg || 8) - 1 : 4; if (p.col + w > COLS) return this.hint('No cabe en esa posición.'); add(ty === 'CLK' ? { type: 'CLK', col: p.col, hz: '1', duty: 50 } : ty === 'DIPSW' ? { type: ty, n: +arg || 8, col: p.col, st: new Array(+arg || 8).fill(0) } : { type: ty, col: p.col, ca: arg === '1' ? 1 : 0 }); this.finish(); return; }
+      const n = b.items.filter(i => i.type === 'IC').length + 1; add({ type: 'IC', ic: arg, r: rOfRow(p.row), col: p.col, label: 'U' + n }); this.finish(); return; }
+    if (ty === 'PUSH' || ty === 'DIPSW' || ty === 'D7' || ty === 'CLK') { if (p.t !== 'h') return; const w = ty === 'CLK' ? 2 : ty === 'PUSH' ? 2 : ty === 'DIPSW' ? (+arg || 8) - 1 : 4; if (p.col + w > COLS) return this.hint('No cabe en esa posición.'); add(ty === 'CLK' ? { type: 'CLK', r: rOfRow(p.row), col: p.col, hz: '1', duty: 50 } : ty === 'DIPSW' ? { type: ty, n: +arg || 8, r: rOfRow(p.row), col: p.col, st: new Array(+arg || 8).fill(0) } : { type: ty, r: rOfRow(p.row), col: p.col, ca: arg === '1' ? 1 : 0 }); this.finish(); return; }
     if (ty === 'LP') { add({ type: 'LP', tip: k }); this.finish(); return; }
     if (ty === 'LA') { if (!this.laItem) { this.laItem = add({ type: 'LA', ch: [] }); } this.laItem.ch.push(k); if (this.laItem.ch.length >= 8) { this.laItem = null; this.finish(); } else { this.hint(`Canal ${this.laItem.ch.length + 1}: haz clic en el agujero (Esc para terminar).`); this.recompile(false); } this.dirty = true; return; }
     if (ty === 'WIRE') { this.wf = { from: k, pts: [], color: arg }; this.hint('Cable: pica en zonas libres para crear codos y termina en un agujero. Esc cancela.'); this.dirty = true; return; }
@@ -337,7 +342,7 @@ B.Editor = class {
     const vis = !!this.root.offsetParent;
     const last = this.lastTs || ts; this.lastTs = ts;
     if (this.running) {
-      const want = Math.min(0.05, (ts - last) / 1000) * this.speed, t0 = performance.now(), n = Math.ceil(want / this.dt);
+      const want = Math.min(0.05, (ts - last) / 1000) * this.speed, t0 = performance.now(); this.acc = (this.acc || 0) + want / this.dt; const n = Math.floor(this.acc); this.acc -= n;
       for (let i = 0; i < n; i++) { this.sim.step(); if ((i & 63) === 0 && performance.now() - t0 > 14) break; }
       this.checks(); this.dirty = true;
     }
@@ -496,7 +501,8 @@ B.Editor = class {
     const hlp = it.type === 'IC' ? DSim.IC[it.ic].name + ': ' + DSim.IC[it.ic].desc : (UI.HELP[it.type + '_b'] || UI.HELP[it.type + (it.n || '')] || UI.HELP[it.type] || '');
     const fireMsg = this.fire && this.fire[it.id];
     const anch = () => { if (it.type === 'IC') return { x: B.hx(it.col) + (DSim.IC[it.ic].n / 2 - 1) * P / 2, y: 168 }; if (it.type === 'D7') return { x: B.hx(it.col) + 2 * P, y: 150 }; const a = pos(it.a), c = pos(it.b); return a && c ? { x: (a.x + c.x) / 2, y: Math.min(a.y, c.y) - 36 } : null; };
-    const G = (inner, extra = '') => { const an = fireMsg && anch(); return `<g data-id="${it.id}" ${extra}><title>${esc(hlp)}</title>${inner}${an ? B.flame(an.x, an.y, fireMsg) : ''}</g>`; };
+    const dy = ['IC', 'PUSH', 'DIPSW', 'CLK', 'D7'].includes(it.type) ? ((R) => (ROWY[R.lo] + ROWY[R.hi]) / 2 - 193)(B.rowsOf(it)) : 0, tr = dy ? ` transform="translate(0,${dy})"` : '';
+    const G = (inner, extra = '') => { const an = fireMsg && anch(); return `<g data-id="${it.id}" ${extra}${tr}><title>${esc(hlp)}</title>${inner}${an ? B.flame(an.x, an.y, fireMsg) : ''}</g>`; };
     const selr = (x, y, w, h) => sel ? `<rect x="${x - 4}" y="${y - 4}" width="${w + 8}" height="${h + 8}" rx="5" fill="none" stroke="${SAGE}" stroke-dasharray="4 3" stroke-width="1.5"/>` : '';
     if (it.type === 'WIRE') { const a = pos(it.a), c = pos(it.b); if (!a || !c) return ''; const d = wirePath(a, c, it.pts); const wpH = sel && it.pts ? it.pts.map((q, i) => `<circle data-wp="${i}" data-item="${it.id}" cx="${q.x}" cy="${q.y}" r="6" fill="#F9F8F6" stroke="${SAGE}" stroke-width="2" style="cursor:grab"/>`).join('') : '';
       return `<g data-id="${it.id}"><path d="${d}" fill="none" stroke="#000" stroke-opacity=".25" stroke-width="${sel ? 7.4 : 6}" stroke-linejoin="round" stroke-linecap="round" transform="translate(0.8,1.4)" pointer-events="none"/><path d="${d}" fill="none" stroke="${it.color}" stroke-width="4.4" stroke-linejoin="round" stroke-linecap="round"/>${sel ? `<path d="${d}" fill="none" stroke="${SAGE}" stroke-width="1.4" stroke-dasharray="3 4" pointer-events="none"/>` : ''}<path d="${d}" fill="none" stroke="transparent" stroke-width="12" style="cursor:pointer"/><circle cx="${a.x}" cy="${a.y}" r="3.4" fill="${it.color}" stroke="#0003"/><circle cx="${c.x}" cy="${c.y}" r="3.4" fill="${it.color}" stroke="#0003"/>${wpH}${sel ? (() => { const sq = [a].concat(it.pts || [], [c]); let r = ''; for (let i = 0; i < sq.length - 1; i++) { const mx = (sq[i].x + sq[i + 1].x) / 2, my0 = (sq[i].y + sq[i + 1].y) / 2, my = (!it.pts || !it.pts.length) ? 0.125 * (a.y + c.y) + 0.75 * (Math.min(a.y, c.y) - 24 - Math.abs(a.x - c.x) * 0.05) : my0; r += `<rect data-wpmid="${i}" data-item="${it.id}" x="${mx - 5}" y="${my - 5}" width="10" height="10" transform="rotate(45 ${mx} ${my})" fill="#F9F8F6" stroke="${HI}" stroke-width="2" style="cursor:copy"><title>Arrastra para crear un codo</title></rect>`; } return r; })() : ''}</g>`; }
@@ -510,9 +516,9 @@ B.Editor = class {
     }
     if (it.type === 'IC') return G(this.drawIC(it, ix, sel));
     if (it.type === 'PUSH') { const x = B.hx(it.col) - 4, w = 2 * P + 8, y = 172 - 4, hh = 214 - 172 + 8, pr = this.pressed === it; return G(`<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="4" fill="#4a4d4a" stroke="#222"/><circle data-push="${it.id}" cx="${x + w / 2}" cy="${y + hh / 2}" r="12" fill="${pr ? '#7a7d7a' : '#2c2e2c'}" stroke="#111" style="cursor:pointer"/>` + selr(x, y, w, hh)); }
-    if (it.type === 'CLK') { const x = B.hx(it.col) - 9, w = 2 * P + 18, y = 166, hh = 58, sp = this.sim.parts[this.refs[it.id]], hi = sp && sp.on && sp.val, pw = sp && sp.on;
-      let s = `<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="3" fill="#33425b" stroke="#1b2536"/><rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="22" rx="2" fill="#26334a"/><text x="${x + w / 2}" y="${y + 13}" font-size="6.6" font-weight="700" fill="#e8ecf4" text-anchor="middle">RELOJ</text><text x="${x + w / 2}" y="${y + 22}" font-size="6.6" fill="#b9c2d0" text-anchor="middle">${esc(String(it.hz || 1))} Hz</text><circle cx="${x + w / 2}" cy="${y + 36}" r="5" fill="${hi ? '#ff9a3c' : pw ? '#5a3a1e' : '#3b3f46'}" stroke="#111"/>`;
-      ['VCC', 'CLK', 'GND'].forEach((n, i) => { const cx = B.hx(it.col + i); s += `<text x="${cx}" y="${y + 52}" font-size="6.4" font-weight="700" text-anchor="middle" fill="${i === 0 ? '#ffb3a1' : i === 2 ? '#b9c2d0' : '#fff'}">${n}</text><circle cx="${cx}" cy="${y + 44 - 0}" r="1.6" fill="#c9ccc9"/>`; });
+    if (it.type === 'CLK') { const x = B.hx(it.col) - 9, w = 2 * P + 18, y = 164, hh = 68, sp = this.sim.parts[this.refs[it.id]], hi = sp && sp.on && sp.val, pw = sp && sp.on;
+      let s = `<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="3" fill="#33425b" stroke="#1b2536"/><rect x="${x + 3}" y="${y + 3}" width="${w - 6}" height="28" rx="2" fill="#26334a"/><text x="${x + w / 2}" y="${y + 17}" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">CLK</text><text x="${x + w / 2}" y="${y + 27}" font-size="7.5" fill="#cdd5e3" text-anchor="middle">${esc(String(it.hz || 1))} Hz</text><circle cx="${x + w - 7}" cy="${y + 8}" r="3.2" fill="${hi ? '#ff9a3c' : pw ? '#5a3a1e' : '#3b3f46'}" stroke="#111"/>`;
+      ['VCC', 'OUT', 'GND'].forEach((n, i) => { const cx = B.hx(it.col + i); s += `<circle cx="${cx}" cy="${y + 50}" r="2" fill="#c9ccc9"/><text x="${cx}" y="${y + (i === 1 ? 64 : 58)}" font-size="7" font-weight="700" text-anchor="middle" fill="${i === 0 ? '#ffb3a1' : i === 2 ? '#c9d2e0' : '#fff'}">${n}</text>`; });
       return G(s + selr(x, y, w, hh)); }
     if (it.type === 'DIPSW') { const n = it.n || 8, x = B.hx(it.col) - 9, w = (n - 1) * P + 18, y = 166, hh = 58; it.st = it.st || new Array(n).fill(0);
       let s = `<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="3" fill="#C23B2E" stroke="#6b1d16"/><rect x="${x + 4}" y="${y + 12}" width="${w - 8}" height="26" rx="2" fill="#8c2a21"/><text x="${x + 5}" y="${y + 9}" font-size="7" font-weight="700" fill="#fff">ON ▲</text><text x="${x + w - 4}" y="${y + 9}" font-size="6" text-anchor="end" fill="#f4d9d5">DIP-${n}</text>`;

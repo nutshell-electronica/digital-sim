@@ -89,6 +89,27 @@ class Timing {
     return { period: per, freq: 1 / per, duty: th, tH: th !== null ? th * per : null };
   }
 }
+
+/* Autoajuste (como el autoset de un osciloscopio, pero para el simulador): toma el reloj más rápido del circuito, muestra 20 periodos
+   en la ventana del analizador y fija velocidad y paso para que la señal cruce la pantalla en unos 6,5 s de tiempo real. */
+Timing.autoset = function (ed) {
+  const clk = ed.sim.parts.filter(p => p.type === 'SRC' && p.mode === 'clock' && p.hz > 0);
+  const say = (msg) => ed.onChange && ed.onChange('toast', { msg });
+  if (!clk.length) { say('Autoajuste: no hay ninguna señal de reloj en el circuito. Añade un generador de reloj.'); return false; }
+  const T = 1 / Math.max(...clk.map(p => p.hz)), span = 20 * T, speed = span / 6.5;
+  let dt = Math.min(1e-2, Math.max(2e-6, T / 100)); if (speed / dt > 60000) dt = speed / 60000;       // que el navegador aguante el ritmo
+  const r = ed.root, sel = (a) => r.querySelector(`[data-a=${a}]`);
+  const put = (s, v, lab) => { s.querySelectorAll('[data-auto]').forEach(o => o.remove()); let o = [...s.options].find(x => Math.abs(+x.value / v - 1) < 1e-6); if (!o) { o = document.createElement('option'); o.value = String(v); o.textContent = lab; o.dataset.auto = '1'; s.appendChild(o); } s.value = o.value; };
+  const fT = (x) => x >= 1 ? (+x.toFixed(1)).toString().replace('.', ',') + ' s' : x >= 1e-3 ? (+(x * 1e3).toFixed(2)).toString().replace('.', ',') + ' ms' : (+(x * 1e6).toFixed(1)).toString().replace('.', ',') + ' µs';
+  const dtChanged = Math.abs(ed.dt / dt - 1) > 1e-6;
+  ed.dt = dt; put(sel('dt'), dt, fT(dt)); if (dtChanged) ed.recompile();
+  ed.speed = speed; put(sel('speed'), speed, '≈ ' + (+speed.toPrecision(2)).toString().replace('.', ',') + '×');
+  ed.timing.span = span; ed.timing.follow = true;
+  if (!ed.running) { ed.running = true; const b = sel('run'); if (b) b.textContent = '❚❚ Pausar'; }
+  ed.dirty = true; ed.timing.draw();
+  say(`Autoajuste: reloj de ${fmtF(1 / T)}; ventana de ${fT(span)} (20 periodos) que cruza la pantalla en unos 6,5 s.` + (T / dt < 10 ? ' Aviso: el reloj es más rápido que el paso mínimo; la señal saldrá deformada.' : ''));
+  return true;
+};
 Timing.fmtT = fmtT; Timing.fmtF = fmtF;
 root.Timing = Timing;
 if (typeof module !== 'undefined') module.exports = Timing;
