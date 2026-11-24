@@ -128,6 +128,12 @@ const routeOf = (doc, w) => { const a = pinPos(doc, w.a.p, w.a.n), b = pinPos(do
   if (w.pts) return [a, ...w.pts, b];
   if (b.x >= a.x + 10) { const mx = Math.round((a.x + b.x) / 20) * 10; return [a, { x: mx, y: a.y }, { x: mx, y: b.y }, b]; }
   const my = Math.round((a.y + b.y) / 20) * 10; return [a, { x: a.x + 14, y: a.y }, { x: a.x + 14, y: my }, { x: b.x - 14, y: my }, { x: b.x - 14, y: b.y }, b]; };
+/* ruta ortogonal por los puntos dados: tramos rectos y, si dos puntos no están alineados, un codo; el último tramo entra en la patilla en horizontal */
+const orthoPath = (P, endPin) => { const o = [{ x: P[0].x, y: P[0].y }];
+  for (let i = 1; i < P.length; i++) { const u = o[o.length - 1], v = P[i], prev = o.length > 1 ? o[o.length - 2] : null, prevHor = prev ? prev.y === u.y : false;
+    if (u.x !== v.x && u.y !== v.y) { const last = endPin && i === P.length - 1; o.push(last ? { x: u.x, y: v.y } : prevHor ? { x: u.x, y: v.y } : { x: v.x, y: u.y }); }
+    o.push({ x: v.x, y: v.y }); }
+  return cleanPts(o); };
 const ptsD = (P) => P.map((q, i) => (i ? 'L' : 'M') + q.x + ',' + q.y).join(' ');
 const cleanPts = (P) => { const o = []; P.forEach(q => { const l = o[o.length - 1]; if (l && l.x === q.x && l.y === q.y) return; o.push({ x: q.x, y: q.y }); });
   for (let i = o.length - 2; i > 0; i--) { const a = o[i - 1], b = o[i], c = o[i + 1]; if ((a.x === b.x && b.x === c.x) || (a.y === b.y && b.y === c.y)) o.splice(i, 1); } return o; };
@@ -196,7 +202,7 @@ S.Editor = class {
     if (window.ResizeObserver) new ResizeObserver(() => { this.dirty = true; }).observe(this.svg);
     this.timing = new Timing(r.querySelector('#tc'), { span: 0.02 });
     const groups = {}; Object.entries(KIND).filter(([id, k]) => !k.hidden && (!this.fpga || !(/^IC:/.test(id) || ['R', 'C', 'VM', 'D7'].includes(id)))).forEach(([id, k]) => (groups[k.group] = groups[k.group] || []).push(id));
-    const order = ['Entradas', 'Salidas', 'Puertas', 'Biestables', 'Integrados', 'Pasivos', 'Alimentación', 'Instrumentos'];
+    const order = ['Entradas', 'Salidas', 'Pasivos', 'Puertas', 'Biestables', 'Integrados', 'Alimentación', 'Instrumentos'];
     this.palEl.innerHTML = order.filter(g => groups[g]).map(g => `<details ${['Entradas', 'Salidas', 'Puertas', 'Instrumentos'].includes(g) ? 'open' : ''}><summary>${g}</summary>${groups[g].map(id => `<button class="pi" draggable="true" data-k="${id}" title="${esc(KIND[id].desc || UI.HELP[id] || KIND[id].name)}">${UI.schThumb(KIND[id], id)}<span>${esc(KIND[id].name)}</span></button>`).join('')}</details>`).join('');
     this.palEl.addEventListener('click', e => { const b = e.target.closest('.pi'); if (!b) return; this.tool = b.dataset.k; this.pend = null; this.palEl.querySelectorAll('.pi').forEach(x => x.classList.toggle('on', x === b)); this.hint('Haz clic en el lienzo para colocar «' + KIND[this.tool].name + '». Esc cancela.'); });
     this.palEl.addEventListener('dragstart', e => { const b = e.target.closest('.pi'); if (!b) return; e.dataTransfer.setData('text/plain', 'sch:' + b.dataset.k); e.dataTransfer.effectAllowed = 'copy'; this.tool = null; this.dragKind = b.dataset.k; this.dropDone = false; this.dragIn = false; this.lastDrag = null; const th = b.querySelector('svg'); if (th && e.dataTransfer.setDragImage) e.dataTransfer.setDragImage(th, 20, 20); });
@@ -214,9 +220,25 @@ S.Editor = class {
     sv.addEventListener('wheel', e => { e.preventDefault(); const p = this.toDoc(e), f = e.deltaY > 0 ? 1.1 : 0.9; this.view.x = p.x - (p.x - this.view.x) * f; this.view.y = p.y - (p.y - this.view.y) * f; this.view.k *= f; this.dirty = true; }, { passive: false });
     sv.addEventListener('dblclick', e => { const hit = document.elementsFromPoint(e.clientX, e.clientY).find(x => sv.contains(x) && x.closest('.part')) || e.target; const pg = hit.closest && hit.closest('.part'); if (!pg) return; const part = this.doc.part(pg.dataset.id); if (part) { this.sel = part.id; this.openPop(part, e); } });
     window.addEventListener('keydown', e => { if (!this.root.offsetParent) return; if (e.target.matches('input,select,textarea')) return;
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) { if (this.copySel()) e.preventDefault(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) { if (this.pasteClip()) e.preventDefault(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'x' || e.key === 'X')) { if (this.copySel()) { this.deleteSel(); e.preventDefault(); } }
       if (e.key === 'Escape') { this.setMsel(null); this.mq = null; this.tool = null; this.pend = null; this.palEl.querySelectorAll('.pi').forEach(x => x.classList.remove('on')); this.dirty = true; }
       if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.altKey && this.sel && !this.sel.startsWith('W:')) { this.rotateSel(); e.preventDefault(); }
       if ((e.key === 'Delete' || e.key === 'Backspace') && (this.sel || this.msel)) { this.deleteSel(); e.preventDefault(); } });
+  }
+  copySel() {
+    const ids = this.msel ? new Set(this.msel) : (this.sel && !this.sel.startsWith('W:') && this.doc.part(this.sel) ? new Set([this.sel]) : null); if (!ids || !ids.size) return false;
+    const cl = (o) => JSON.parse(JSON.stringify(o));
+    this.clip = { parts: this.doc.parts.filter(p => ids.has(p.id)).map(cl), wires: this.doc.wires.filter(w => ids.has(w.a.p) && ids.has(w.b.p)).map(cl), n: 0 };
+    this.hint(this.clip.parts.length + (this.clip.parts.length === 1 ? ' componente copiado.' : ' componentes copiados.') + ' Ctrl+V para pegar.'); return true;
+  }
+  pasteClip() {
+    const c = this.clip; if (!c || !c.parts.length) return false; c.n++; const off = 40 * c.n, map = {}, ns = new Set();
+    c.parts.forEach(o => { const q = this.doc.add(o.kind, o.x + off, o.y + off, o.props); if (o.rot) q.rot = o.rot; Object.keys(o).forEach(k => { if (!['id', 'kind', 'x', 'y', 'props', 'rot'].includes(k)) q[k] = JSON.parse(JSON.stringify(o[k])); }); if (['LED', 'SW', 'SWM', 'PSH'].includes(o.kind)) this.autoName(q); map[o.id] = q; ns.add(q.id); });
+    c.wires.forEach(o => { const w = this.doc.wire(map[o.a.p], o.a.n, map[o.b.p], o.b.n); Object.keys(o).forEach(k => { if (!['id', 'a', 'b', 'pts'].includes(k)) w[k] = JSON.parse(JSON.stringify(o[k])); }); if (o.pts) w.pts = o.pts.map(q => ({ x: q.x + off, y: q.y + off })); });
+    this.sel = null; this.setMsel(ns.size > 1 ? ns : null); if (ns.size === 1) this.sel = [...ns][0];
+    this.hint(ns.size + (ns.size === 1 ? ' componente pegado' : ' componentes pegados') + ' y seleccionados: arrástralos a su sitio.'); this.changed(); return true;
   }
   hint(t) { this.root.querySelector('#hint').textContent = t; }
   action(a, el) {
@@ -243,8 +265,9 @@ S.Editor = class {
     if (pin) {
       const ref = { p: pin.dataset.p, n: pin.dataset.n };
       this.pinDown = { x: e.clientX, y: e.clientY, moved: false };
-      if (!this.pend) { this.pend = ref; this.hint('Suelta sobre otra patilla (o haz clic en ella) para unirlas. Esc cancela.'); } else {
-        if (this.pend.p !== ref.p || this.pend.n !== ref.n) { this.doc.wire(this.doc.part(this.pend.p), this.pend.n, this.doc.part(ref.p), ref.n); this.changed(); }
+      if (!this.pend) { this.pend = { p: ref.p, n: ref.n, pts: [] }; this.hint('Pica en zonas libres para poner codos y termina en otra patilla. También puedes arrastrar directamente a otra patilla. Esc cancela.'); } else {
+        if (this.pend.p !== ref.p || this.pend.n !== ref.n) { const w = this.doc.wire(this.doc.part(this.pend.p), this.pend.n, this.doc.part(ref.p), ref.n);
+          if (this.pend.pts && this.pend.pts.length) { const P = orthoPath([pinPos(this.doc, this.pend.p, this.pend.n), ...this.pend.pts, pinPos(this.doc, ref.p, ref.n)], true); w.pts = P.slice(1, -1); } this.changed(); }
         this.pend = null; this.hint('Cable creado.'); }
       this.dirty = true; return; }
     const sg = t.closest && t.closest('.seg');
@@ -265,6 +288,7 @@ S.Editor = class {
       if (part.kind === 'PSH') { this.rt[part.id] = this.rt[part.id] || {}; this.rt[part.id].pressed = true; this.setSw(part, part.props.nc ? 0 : 1); }
       this.drag = { part, dx: p.x - part.x, dy: p.y - part.y, sx: e.clientX, sy: e.clientY, moved: false };
       this.showProps(); this.dirty = true; return; }
+    if (this.pend) { this.pend.pts = this.pend.pts || []; this.pend.pts.push({ x: this.snap(p.x), y: this.snap(p.y) }); this.hint('Codo añadido. Sigue picando en zonas libres o termina en una patilla. Esc cancela.'); this.dirty = true; return; }
     if (!e.shiftKey) { this.sel = null; this.setMsel(null); } this.pend = null; this.mq = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, sx: e.clientX, sy: e.clientY, add: e.shiftKey && this.msel ? new Set(this.msel) : null }; this.showProps(); this.dirty = true;
   }
   setMsel(ms) { if (ms && ms.size === 0) ms = null; this.msel = ms; this.wsel = ms ? new Set(this.doc.wires.filter(w => ms.has(w.a.p) && ms.has(w.b.p)).map(w => w.id)) : null; }
@@ -301,7 +325,7 @@ S.Editor = class {
       this.showProps(); this.dirty = true; }
     if (this.segDrag) { const w = this.segDrag.w; this.segDrag = null; const P = cleanPts([pinPos(this.doc, w.a.p, w.a.n), ...w.pts, pinPos(this.doc, w.b.p, w.b.n)]); w.pts = P.slice(1, -1); if (!w.pts.length) delete w.pts; this.changed(); return; }
     if (this.pinDown) { const pd = this.pinDown; this.pinDown = null; const tp = this.pinAt(e);
-      if (pd.moved && this.pend && tp && (this.pend.p !== tp.dataset.p || this.pend.n !== tp.dataset.n)) { this.doc.wire(this.doc.part(this.pend.p), this.pend.n, this.doc.part(tp.dataset.p), tp.dataset.n); this.pend = null; this.hint('Cable creado.'); this.changed(); }
+      if (pd.moved && this.pend && tp && (this.pend.p !== tp.dataset.p || this.pend.n !== tp.dataset.n)) { { const w = this.doc.wire(this.doc.part(this.pend.p), this.pend.n, this.doc.part(tp.dataset.p), tp.dataset.n); if (this.pend.pts && this.pend.pts.length) w.pts = orthoPath([pinPos(this.doc, this.pend.p, this.pend.n), ...this.pend.pts, pinPos(this.doc, tp.dataset.p, tp.dataset.n)], true).slice(1, -1); } this.pend = null; this.hint('Cable creado.'); this.changed(); }
       else if (pd.moved && this.pend && !tp) { const hw = document.elementsFromPoint(e.clientX, e.clientY).find(x => x.classList && x.classList.contains('wire')); if (hw) { const jn = this.junctionOn(hw.dataset.w, this.toDoc(e)); if (jn && !(jn.id === this.pend.p)) { this.doc.wire(this.doc.part(this.pend.p), this.pend.n, jn, 'P'); this.hint('Nudo creado.'); this.changed(); } } this.pend = null; this.dirty = true; }
       else if (pd.moved) { this.pend = null; this.dirty = true; } }
     if (this.drag && this.drag.group) { if (this.drag.moved) this.changed(); this.drag = null; this.dirty = true; }
@@ -410,7 +434,7 @@ S.Editor = class {
     });
     if (this.ghost) { const gh = this.ghost, k = KIND[gh.kind], p = { id: 'ghost', kind: gh.kind, x: gh.x, y: gh.y, props: JSON.parse(JSON.stringify(k.props || {})) }; try { s += `<g opacity=".55" pointer-events="none" transform="translate(${gh.x},${gh.y})">${k.draw(p, gh.g, {})}</g>` + gh.g.pins.map(pn => `<circle cx="${gh.x + pn.x}" cy="${gh.y + pn.y}" r="3.2" fill="${SAGE}" opacity=".7" pointer-events="none"/>`).join(''); } catch (er) { } }
     if (this.mq) { const q = this.mq; s += `<rect x="${Math.min(q.x0, q.x1)}" y="${Math.min(q.y0, q.y1)}" width="${Math.abs(q.x1 - q.x0)}" height="${Math.abs(q.y1 - q.y0)}" fill="#3B7DD8" fill-opacity=".16" stroke="#3B7DD8" stroke-width="1.4" stroke-dasharray="5 3" pointer-events="none"/>`; }
-    if (this.pend && this.mouse) { const a = pinPos(doc, this.pend.p, this.pend.n); if (a) s += `<path d="M${a.x},${a.y} L${this.mouse.x},${this.mouse.y}" stroke="${SAGE}" stroke-dasharray="5 4" stroke-width="2" fill="none" pointer-events="none"/>`; }
+    if (this.pend && this.mouse) { const a = pinPos(doc, this.pend.p, this.pend.n); if (a) { const el = this.pend.pts || [], mp = { x: this.snap(this.mouse.x), y: this.snap(this.mouse.y) }, P = orthoPath([a, ...el, mp], false); s += `<path d="${ptsD(P)}" stroke="${SAGE}" stroke-dasharray="5 4" stroke-width="2" fill="none" stroke-linejoin="round" pointer-events="none"/>` + el.map(q => `<circle cx="${q.x}" cy="${q.y}" r="3.5" fill="${SAGE}" pointer-events="none"/>`).join(''); } }
     this.svg.setAttribute('viewBox', `${this.view.x} ${this.view.y} ${W} ${H}`);
     this.svg.innerHTML = s;
   }
