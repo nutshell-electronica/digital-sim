@@ -25,7 +25,7 @@ class Timing {
   hover(e) { if (this.drag != null) return; const p = this.pos(e); this.c.style.cursor = p.x >= this.labelW && this.near(p) >= 0 ? 'ew-resize' : ''; }
   toggleCursor(k) { if (this.curs[k] !== null) this.curs[k] = null; else this.curs[k] = this.t0 + this.span * (k ? 0.6 : 0.4); this.draw(); }
   clearCursors() { this.curs = [null, null]; this.draw(); }
-  level(w, i) { return w.v[i] >= this.th[1] ? 1 : w.v[i] <= this.th[0] ? 0 : (i > 0 ? this.level(w, i - 1) : 0); }
+  level(w, i) { for (; i >= 0; i--) { if (w.v[i] >= this.th[1]) return 1; if (w.v[i] <= this.th[0]) return 0; } return 0; }
   draw() {
     const c = this.c, dpr = this.dpr = window.devicePixelRatio || 1;
     const cw = c.clientWidth, chh = Math.max(60, this.ch.length * this.rowH + 34);

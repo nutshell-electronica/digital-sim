@@ -32,12 +32,21 @@ function gateK(id, label, n0) {
 }
 ['AND', 'OR', 'NAND', 'NOR', 'XOR', 'XNOR', 'NOT', 'BUF'].forEach(k => gateK(k, { AND: 'AND', OR: 'OR', NAND: 'NAND', NOR: 'NOR', XOR: 'XOR', XNOR: 'XNOR', NOT: 'NOT', BUF: 'Buffer' }[k]));
 
-KIND.SW = { name: 'Interruptor (entrada)', group: 'Entradas', props: { label: 'A', on: 0 }, propsDef: [{ k: 'label', label: 'Nombre', type: 'text' }, { k: 'on', label: 'Valor inicial', type: 'sel', opts: [0, 1] }],
+KIND.SW = { name: 'Entrada digital fija', group: 'Entradas', props: { label: 'A', on: 0 }, propsDef: [{ k: 'label', label: 'Nombre', type: 'text' }, { k: 'on', label: 'Valor inicial', type: 'sel', opts: [0, 1] }],
   geom: () => ({ w: 50, h: 30, pins: [{ n: 'Y', x: 50, y: 15, out: 1 }] }),
   draw(p, g, rt) { const on = rt.on ?? p.props.on; return `<rect x="0" y="0" width="40" height="30" rx="4" fill="${on ? HI : BG}" stroke="${INK}" stroke-width="1.8"/><text x="20" y="20" text-anchor="middle" font-size="14" font-weight="700" fill="${on ? BG : INK}">${on ? 1 : 0}</text><line x1="40" y1="15" x2="50" y2="15" stroke="${INK}" stroke-width="1.8"/><text x="20" y="-5" text-anchor="middle" font-size="11" fill="${MUTE}">${esc(p.props.label)}</text>`; } };
-KIND.PUSH = { name: 'Pulsador (entrada)', group: 'Entradas', props: { label: 'P', inv: 0 }, propsDef: [{ k: 'label', label: 'Nombre', type: 'text' }, { k: 'inv', label: 'Salida a 0 al pulsar', type: 'sel', opts: [0, 1] }],
+KIND.PUSH = { name: 'Entrada digital pulsada', group: 'Entradas', props: { label: 'P', inv: 0 }, propsDef: [{ k: 'label', label: 'Nombre', type: 'text' }, { k: 'inv', label: 'Salida a 0 al pulsar', type: 'sel', opts: [0, 1] }],
   geom: () => ({ w: 50, h: 30, pins: [{ n: 'Y', x: 50, y: 15, out: 1 }] }),
   draw(p, g, rt) { const pr = rt.pressed; return `<circle cx="20" cy="15" r="14" fill="${pr ? HI : BG}" stroke="${INK}" stroke-width="1.8"/><circle cx="20" cy="15" r="7" fill="none" stroke="${pr ? BG : MUTE}" stroke-width="1.5"/><line x1="34" y1="15" x2="50" y2="15" stroke="${INK}" stroke-width="1.8"/><text x="20" y="-5" text-anchor="middle" font-size="11" fill="${MUTE}">${esc(p.props.label)}</text>`; } };
+
+/* Interruptor y pulsador reales (dos terminales, símbolo eléctrico): abren o cierran el circuito; no dan niveles lógicos por sí solos. */
+const swTerm = (cl) => `<path d="M0,20 H14 M46,20 H60" fill="none" stroke="${INK}" stroke-width="1.8"/><circle cx="14" cy="20" r="2.6" fill="${BG}" stroke="${INK}" stroke-width="1.6"/><circle cx="46" cy="20" r="2.6" fill="${BG}" stroke="${INK}" stroke-width="1.6"/>`;
+KIND.SWM = { name: 'Interruptor', group: 'Entradas', desc: 'Interruptor simple de dos terminales (SPST): clic para abrirlo o cerrarlo. Abierto no conduce; cerrado es un cable.', props: { label: 'S1', on: 0 }, propsDef: [{ k: 'label', label: 'Nombre', type: 'text' }, { k: 'on', label: 'Estado inicial (1 = cerrado)', type: 'sel', opts: [0, 1] }],
+  geom: () => ({ w: 60, h: 30, pins: [{ n: 'A', x: 0, y: 20 }, { n: 'B', x: 60, y: 20 }] }),
+  draw(p, g, rt) { const cl = rt.closed ?? +p.props.on; return swTerm() + (cl ? `<line x1="15" y1="20" x2="45" y2="20" stroke="${HI}" stroke-width="2.6"/>` : `<line x1="15" y1="19" x2="43" y2="5" stroke="${INK}" stroke-width="2.2"/>`) + `<text x="30" y="-4" text-anchor="middle" font-size="11" fill="${MUTE}">${esc(p.props.label)}</text>`; } };
+KIND.PSH = { name: 'Pulsador', group: 'Entradas', desc: 'Pulsador de dos terminales: normalmente abierto (conduce solo mientras lo mantienes pulsado) o normalmente cerrado.', props: { label: 'P1', nc: 0 }, propsDef: [{ k: 'label', label: 'Nombre', type: 'text' }, { k: 'nc', label: 'Tipo (0 = NA, 1 = NC)', type: 'sel', opts: [0, 1] }],
+  geom: () => ({ w: 60, h: 30, pins: [{ n: 'A', x: 0, y: 20 }, { n: 'B', x: 60, y: 20 }] }),
+  draw(p, g, rt) { const cl = rt.closed ?? (p.props.nc ? 1 : 0), pr = rt.pressed, y = cl ? 19 : 12; return swTerm() + `<line x1="14" y1="${y}" x2="46" y2="${y}" stroke="${cl ? HI : INK}" stroke-width="2.4"/><line x1="30" y1="${y}" x2="30" y2="${pr ? 5 : 2}" stroke="${INK}" stroke-width="1.8"/><line x1="22" y1="${pr ? 5 : 2}" x2="38" y2="${pr ? 5 : 2}" stroke="${INK}" stroke-width="2.4"/>` + (p.props.nc ? `<path d="M26,14 L26,22" stroke="${INK}" stroke-width="1" />` : '') + `<text x="30" y="-10" text-anchor="middle" font-size="11" fill="${MUTE}">${esc(p.props.label)}</text>`; } };
 KIND.CLK = { name: 'Reloj', group: 'Entradas', props: { label: 'CLK', hz: 1 }, propsDef: [{ k: 'label', label: 'Nombre', type: 'text' }, { k: 'hz', label: 'Frecuencia (Hz)', type: 'num' }],
   geom: () => ({ w: 60, h: 30, pins: [{ n: 'Y', x: 60, y: 15, out: 1 }] }),
   draw(p, g, rt) { return `<rect x="0" y="0" width="50" height="30" rx="4" fill="${BG}" stroke="${INK}" stroke-width="1.8"/><path d="M6,22 H14 V8 H24 V22 H34 V8 H44" fill="none" stroke="${rt.val ? HI : INK}" stroke-width="1.6"/><line x1="50" y1="15" x2="60" y2="15" stroke="${INK}" stroke-width="1.8"/><text x="25" y="-5" text-anchor="middle" font-size="11" fill="${MUTE}">${esc(p.props.label)} · ${esc(p.props.hz)} Hz</text>`; } };
@@ -135,6 +144,8 @@ S.compile = function (doc, opt = {}) {
     const k = p.kind, pr = p.props;
     if (k === 'SW') refs[p.id] = push(p, { type: 'SRC', mode: 'level', level: +pr.on, pinIds: [pid(p, 'Y')] });
     else if (k === 'PUSH') refs[p.id] = push(p, { type: 'SRC', mode: 'level', level: pr.inv ? 1 : 0, pinIds: [pid(p, 'Y')] });
+    else if (k === 'SWM') refs[p.id] = push(p, { type: 'SW', closed: !!+pr.on, pinIds: [pid(p, 'A'), pid(p, 'B')] });
+    else if (k === 'PSH') refs[p.id] = push(p, { type: 'SW', closed: !!+pr.nc, pinIds: [pid(p, 'A'), pid(p, 'B')] });
     else if (k === 'CLK') refs[p.id] = push(p, { type: 'SRC', mode: 'clock', hz: Math.max(1e-3, +pr.hz || 1), duty: 0.5, pinIds: [pid(p, 'Y')] });
     else if (k === 'HI') push(p, { type: 'V', v: 5, pinIds: [pid(p, 'P')] });
     else if (k === 'LO') nb.join(pid(p, 'P'), 'GND');
@@ -244,6 +255,7 @@ S.Editor = class {
       const part = this.doc.part(pg.dataset.id); this.sel = part.id; this.pend = null;
       const k = KIND[part.kind];
       if (part.kind === 'PUSH') { this.rt[part.id] = this.rt[part.id] || {}; this.rt[part.id].pressed = true; this.setSrc(part, part.props.inv ? 0 : 1); }
+      if (part.kind === 'PSH') { this.rt[part.id] = this.rt[part.id] || {}; this.rt[part.id].pressed = true; this.setSw(part, part.props.nc ? 0 : 1); }
       this.drag = { part, dx: p.x - part.x, dy: p.y - part.y, sx: e.clientX, sy: e.clientY, moved: false };
       this.showProps(); this.dirty = true; return; }
     this.sel = null; this.pend = null; this.pan = { x: e.clientX, y: e.clientY, vx: this.view.x, vy: this.view.y }; this.showProps(); this.dirty = true;
@@ -278,6 +290,8 @@ S.Editor = class {
     if (this.drag) {
       const part = this.drag.part;
       if (part.kind === 'PUSH') { this.rt[part.id].pressed = false; this.setSrc(part, part.props.inv ? 1 : 0); }
+      else if (part.kind === 'PSH') { this.rt[part.id].pressed = false; this.setSw(part, part.props.nc ? 1 : 0); }
+      else if (part.kind === 'SWM' && !this.drag.moved) { part.props.on = part.props.on ? 0 : 1; this.setSw(part, part.props.on); this.showProps(); }
       else if (part.kind === 'SW' && !this.drag.moved) { part.props.on = part.props.on ? 0 : 1; this.setSrc(part, part.props.on); this.showProps(); }
       this.drag = null; this.dirty = true;
     }
@@ -287,7 +301,7 @@ S.Editor = class {
     const k = KIND[kind]; let g = { w: 40, h: 30 }; try { if (k.geom) g = k.geom({ kind, props: JSON.parse(JSON.stringify(k.props || {})) }) || g; } catch (er) { }
     const part = this.doc.add(kind, this.snap(p.x - (g.w || 40) / 2), this.snap(p.y - (g.h || 30) / 2));
     if (k.ic) part.props.label = 'U' + this.doc.parts.filter(q => q.kind.startsWith('IC:')).length;
-    if (kind === 'LED' || kind === 'SW') this.autoName(part);
+    if (kind === 'LED' || kind === 'SW' || kind === 'SWM' || kind === 'PSH') this.autoName(part);
     this.sel = part.id; this.changed(); return part;
   }
   openPop(part, e) {
@@ -298,7 +312,8 @@ S.Editor = class {
     UI.pop(this.root.querySelector('.cv'), e.clientX, e.clientY, k.name, fields, (key, val) => { if (!isNaN(+val) && val !== '' && pd.find(d => d.k === key && d.type === 'sel')) val = +val; part.props[key] = val; this.changed(); },
       { before: k.ic ? Board.dsLinkHTML(k.ic) : '', del: true, onDel: () => { this.sel = part.id; this.deleteSel(); } });
   }
-  autoName(part) { const same = this.doc.parts.filter(q => q.kind === part.kind).length; part.props.label = part.kind === 'SW' ? String.fromCharCode(64 + same) : 'L' + same; }
+  autoName(part) { const same = this.doc.parts.filter(q => q.kind === part.kind).length; part.props.label = part.kind === 'SW' ? String.fromCharCode(64 + same) : part.kind === 'SWM' ? 'S' + same : part.kind === 'PSH' ? 'P' + same : 'L' + same; }
+  setSw(part, cl) { const ix = this.refs[part.id]; if (ix !== undefined && this.sim.parts[ix]) this.sim.parts[ix].closed = !!cl; }
   setSrc(part, lv) { const ix = this.refs[part.id]; if (ix !== undefined && this.sim.parts[ix]) this.sim.parts[ix].level = lv; }
   deleteSel() { if (!this.sel) return; if (this.sel.startsWith('W:')) this.doc.wires = this.doc.wires.filter(w => w.id !== this.sel.slice(2)); else this.doc.remove(this.sel); this.sel = null; this.changed(); }
   changed() { this.recompile(); this.showProps(); this.onChange && this.onChange('doc'); }
@@ -381,6 +396,7 @@ S.Editor = class {
     const sp = ix !== undefined && typeof ix === 'number' ? sim.parts[ix] : null;
     switch (p.kind) {
       case 'SW': rt.on = sp ? sp.level : p.props.on; break;
+      case 'SWM': case 'PSH': rt.closed = sp ? (sp.closed ? 1 : 0) : (p.kind === 'SWM' ? +p.props.on : (p.props.nc ? 1 : 0)); break;
       case 'CLK': rt.val = sp ? sp.val : 0; break;
       case 'LED': rt.on = sp && sp.st.on; rt.i = sp ? sp.st.i : 0; break;
       case 'D7': rt.segs = sp ? sp.st.on : []; break;

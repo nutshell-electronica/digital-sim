@@ -362,7 +362,7 @@ class Sim {
         case 'VM': G2(pn[0], pn[1], 1 / 1e7); break;
         case 'AMM': G2(pn[0], pn[1], 1 / 0.2); break;
         case 'C': { const g = p.c / dt; G2(pn[0], pn[1], g); const ic = g * p.st.vc; I1(pn[0], ic); I1(pn[1], -ic); break; }
-        case 'SW': G2(pn[0], pn[1], p.closed ? 1000 : GMIN); break;
+        case 'SW': G2(pn[0], pn[1], p.closed ? 1000 : 1e-12); break;
         case 'V': { const g = 1000; G2(pn[0], 0, g); I1(pn[0], p.v * g); break; }
         case 'LED': { const [vf, rs] = p.led; const g = p.st.on ? 1 / rs : GMIN; G2(pn[0], pn[1], g); if (p.st.on) { I1(pn[0], vf * g); I1(pn[1], -vf * g); } break; }
         case 'DISP7': { const [vf, rs] = p.led; const com = pn[7];
@@ -385,9 +385,9 @@ class Sim {
   ledUpdate() {
     let ch = false; const v = this.v;
     for (const p of this.parts) {
-      if (p.type === 'LED') { const vd = v[p.pins[0]] - v[p.pins[1]], vf = p.led[0], s = p.st; const on = s.on ? vd > vf - 0.002 : vd > vf + 0.002; if (on !== s.on) { s.on = on; ch = true; } s.i = on ? Math.max(0, (vd - vf) / p.led[1]) : 0; }
+      if (p.type === 'LED') { const vd = v[p.pins[0]] - v[p.pins[1]], vf = p.led[0], s = p.st; const on = s.on ? (vd - vf) / p.led[1] > 1e-7 : vd > vf + 0.002; if (on !== s.on) { s.on = on; ch = true; } s.i = on ? Math.max(0, (vd - vf) / p.led[1]) : 0; }
       else if (p.type === 'DISP7') { const vf = p.led[0], s = p.st;
-        for (let k = 0; k < 8; k++) { const vd = p.ca ? v[p.pins[7]] - v[p.pins[k]] : v[p.pins[k]] - v[p.pins[7]]; const on = s.on[k] ? vd > vf - 0.002 : vd > vf + 0.002; if (on !== !!s.on[k]) { s.on[k] = on ? 1 : 0; ch = true; } s.i[k] = on ? Math.max(0, (vd - vf) / p.led[1]) : 0; } }
+        for (let k = 0; k < 8; k++) { const vd = p.ca ? v[p.pins[7]] - v[p.pins[k]] : v[p.pins[k]] - v[p.pins[7]]; const on = s.on[k] ? (vd - vf) / p.led[1] > 1e-7 : vd > vf + 0.002; if (on !== !!s.on[k]) { s.on[k] = on ? 1 : 0; ch = true; } s.i[k] = on ? Math.max(0, (vd - vf) / p.led[1]) : 0; } }
     }
     return ch;
   }
