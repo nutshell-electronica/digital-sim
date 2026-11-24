@@ -586,6 +586,7 @@ function analyze(nl) {
         break; }
     }
   });
+  nl.deg = deg;
   nl.parts.forEach((p, pi) => { if (p.type === 'IC' && p.label !== undefined) {
     const d = IC[p.ic];
     if (d.vcc && (p.pins[d.vcc - 1] == null || p.pins[d.gnd - 1] == null)) w.push({ part: pi, msg: `${p.label || d.name}: VCC (pata ${d.vcc}) o GND (pata ${d.gnd}) sin conectar.` });
@@ -976,7 +977,7 @@ UI.HELP = {
   D7_b: 'Display de 7 segmentos 5161 (ánodo común) o 5163 (cátodo común). Cada segmento necesita su resistencia.', WIRE: 'Cable: arrastra de un agujero a otro. Pulsa en un punto del cable para crear un codo y arrástralo. Doble clic para cambiar el color.',
   IC: 'Circuito integrado DIP. Se monta a caballo del canal central, con la muesca a la izquierda (pata 1 abajo a la izquierda).', DMM: 'Multímetro: tensión (V), corriente (A, en serie) o resistencia (Ω, sin tensión en el circuito). Se cambia con doble clic.',
   LP: 'Sonda lógica en forma de lápiz: la punta se pincha en cualquier agujero. Las pinzas van a alimentación.', LA: 'Analizador lógico de 8 canales: solo se conectan los canales que vayas a usar, más masa.', MB102: 'Fuente MB102 para protoboard: jumpers de 3,3 V/5 V por cada carril y interruptor. Entrada por jack o USB.',
-  UNO: 'Arduino UNO (ATmega328P, 5 V). Sus pines se conectan a la placa con cables.', ESP32: 'ESP32 DevKit (3,3 V). No tolera 5 V en sus pines.'
+  UNO: 'Arduino UNO (ATmega328P, 5 V). Sus pines se conectan a la placa con cables.', ESP32: 'ESP32-S3 DevKitC-1 (3,3 V). No tolera 5 V en sus pines.'
 };
 const svgw = (inner) => `<svg class="th" viewBox="0 0 60 36" aria-hidden="true">${inner}</svg>`;
 const bandsFor = ['#8a5a2b', '#1F2421', '#B8432F'];
@@ -1541,6 +1542,99 @@ S.fromKarnaugh = function (funcs, names, n, o = {}) {
 root.Schem = S;
 })(window);
 
+/* Dibujo realista de las placas (vista superior, a escala 26 px = 2,54 mm). Arduino UNO R3 (A000066) y ESP32-S3-DevKitC-1. */
+(function (root) {
+'use strict';
+const S = 26 / 2.54, T = '#0a8791', TD = '#06646c', TL = '#1aa3ad', WH = '#f4f6f4', MET = '#c9ccd0', MD = '#8c9196';
+const f = (n) => +n.toFixed(1);
+function ctxOf(X, Y) {
+  const P = (x, y) => [f(X + x * S), f(Y + y * S)];
+  const rect = (x, y, w, h, fill, st = '', rx = 0) => { const [a, b] = P(x, y); return `<rect x="${a}" y="${b}" width="${f(w * S)}" height="${f(h * S)}" rx="${f(rx * S)}" fill="${fill}" ${st}/>`; };
+  const circ = (x, y, r, fill, st = '') => { const [a, b] = P(x, y); return `<circle cx="${a}" cy="${b}" r="${f(r * S)}" fill="${fill}" ${st}/>`; };
+  const txt = (x, y, t, size, fill, o = '') => { const [a, b] = P(x, y); return `<text x="${a}" y="${b}" font-size="${size}" fill="${fill}" font-family="Arial" ${o}>${t}</text>`; };
+  const line = (x1, y1, x2, y2, c, w) => { const [a, b] = P(x1, y1), [d, e] = P(x2, y2); return `<line x1="${a}" y1="${b}" x2="${d}" y2="${e}" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>`; };
+  return { P, rect, circ, txt, line };
+}
+/* ------------------------------------------------ Arduino UNO R3: 68,6 × 53,3 mm, USB-B arriba-izquierda, jack abajo-izquierda ---- */
+function uno(X, Y, L) {
+  const { P, rect, circ, txt, line } = ctxOf(X, Y), W = 68.6, H = 53.3; let s = '';
+  // placa con esquinas achaflanadas (como el contorno oficial)
+  const pts = [[0, 1.5], [1.5, 0], [64.8, 0], [68.6, 3.8], [68.6, 49.2], [66.5, 51.3], [66.5, 53.3 - 0.0], [1.5, 53.3], [0, 51.8]].map(q => P(q[0], q[1]).join(',')).join(' ');
+  s += `<polygon points="${pts}" fill="${T}" stroke="${TD}" stroke-width="2.4" stroke-linejoin="round"/><polygon points="${pts}" fill="none" stroke="${TL}" stroke-width="1" transform="translate(${f(S * .9)},${f(S * .9)}) scale(.97)" opacity=".5"/>`;
+  // pistas sugeridas
+  [[[30, 9.5], [30, 20], [24, 20]], [[48, 12], [48, 24]], [[52, 13], [52, 24]], [[36, 33], [36, 46], [20, 46]], [[58, 33], [58, 47]], [[44, 34], [44, 45]], [[14, 28], [26, 28], [26, 40]]].forEach(pp => s += `<polyline points="${pp.map(q => P(q[0], q[1]).join(',')).join(' ')}" fill="none" stroke="${TL}" stroke-width="2" opacity=".55" stroke-linejoin="round"/>`);
+  // taladros de fijación
+  [[14, 2.5], [15.3, 50.7], [66.1, 7.6], [66.1, 35.5]].forEach(q => s += circ(q[0], q[1], 1.6, '#f1f3ee', `stroke="${TD}" stroke-width="2"`) + circ(q[0], q[1], 2.6, 'none', `stroke="${MET}" stroke-width="2.5" opacity=".9"`));
+  // USB tipo B (sobresale 6,2 mm)
+  s += rect(-6.2, 8.9, 16.3, 12.2, MET, `stroke="${MD}" stroke-width="1.6"`, .6) + rect(-5.4, 9.8, 12.8, 10.4, '#aeb3b8', `stroke="#7b8085" stroke-width="1"`) + rect(-5.2, 11.2, 9.5, 7.6, '#15171a') + rect(-5.2, 13.6, 9.0, 2.2, '#d9d9d9') + rect(-1.5, 9.6, 1.4, .8, '#777') + line(10.1, 9.4, 10.1, 20.6, '#888', 1);
+  // conector de alimentación (jack)
+  s += rect(-6.2, 33.6, 15, 12.6, '#1b1c1e', `stroke="#000" stroke-width="1.6"`, .8) + rect(-6.2, 35.6, 4.4, 8.6, '#0a0a0b') + circ(-2.5, 39.9, 1.6, '#050505', `stroke="#555" stroke-width="1.2"`) + rect(2, 34.2, 6.4, 11.4, '#2a2b2e', `stroke="#000" stroke-width=".6"`) + line(1.4, 34, 1.4, 46, '#3a3c40', 1.4);
+  // fusible PTC y diodo M7
+  s += rect(10.6, 23.8, 4.4, 3.2, '#d8c27a', `stroke="#8a7a3a" stroke-width=".8"`, .3) + rect(10.2, 29, 4.2, 2.7, '#222', `stroke="#000" stroke-width=".6"`) + rect(10.2, 29, .9, 2.7, '#ccc');
+  // regulador NCP1117 (SOT-223) y condensadores electrolíticos
+  s += rect(13.4, 37.2, 6.4, 3.4, '#1a1a1a') + rect(14.2, 35.4, 4.8, 1.7, '#b5b8bc') + rect(15.6, 40.6, 1.8, 1.2, '#b5b8bc');
+  [[21.6, 41.8], [28.4, 41.8]].forEach(q => s += circ(q[0], q[1], 3.2, '#b9bcc0', `stroke="#6b6f74" stroke-width="1.4"`) + circ(q[0], q[1], 2.2, '#d6d8db') + line(q[0] - 3, q[1], q[0] - 2, q[1], '#222', 3));
+  // ATmega16U2 (QFN) + cristal + ICSP1
+  s += rect(18.4, 15.2, 6.6, 6.6, '#1b1b1b', `stroke="#000" stroke-width=".6"`) + circ(19.5, 16.3, .45, '#777') + txt(21.7, 19.2, '16U2', 7.5, '#9a9a9a', 'text-anchor="middle"');
+  s += rect(18.6, 24, 5.4, 2.4, '#d3d6d9', `stroke="#808488" stroke-width="1"`, 1.1) + rect(19.4, 24.6, 3.8, 1.2, '#9aa0a5');
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) s += rect(11.9 + i * 2.54, 16.4 + j * 2.54, 1.7, 1.7, '#1a1a1a') + circ(12.75 + i * 2.54, 17.25 + j * 2.54, .42, '#d4b24a');
+  // pulsador de reset
+  s += rect(30.5, 3.9, 6.2, 6.2, '#cfd2d5', `stroke="#555" stroke-width="1.2"`, .5) + circ(33.6, 7, 1.9, '#2a2a2a', `stroke="#000" stroke-width="1"`) + txt(33.6, 11.9, 'RESET', 7, WH, 'text-anchor="middle"');
+  // LED SMD: L, TX, RX, ON
+  const sled = (x, y, c, lab, lit) => rect(x - .8, y - .6, 1.6, 1.2, lit ? c : '#6e6e55', `stroke="#333" stroke-width=".7"`) + (lit ? circ(x, y, 2.2, c, 'opacity=".3"') : '') + txt(x, y + 3.1, lab, 6.5, WH, 'text-anchor="middle"');
+  s += sled(41.5, 7.4, '#ffb300', 'L', L) + sled(44.4, 7.4, '#ffb300', 'TX', false) + sled(47.2, 7.4, '#ffb300', 'RX', false) + sled(50.5, 7.4, '#3ddc4a', 'ON', true);
+  // ATmega328P DIP-28 con muesca, patas y serigrafía
+  const dx = 28.8, dy = 23.6;
+  for (let i = 0; i < 14; i++) s += rect(dx + 1.2 + i * 2.54, dy - 1.1, .64, 1.3, '#cfd2d4') + rect(dx + 1.2 + i * 2.54, dy + 6.9, .64, 1.3, '#cfd2d4');
+  s += rect(dx, dy, 35.1, 7.6, '#181818', `stroke="#000" stroke-width="1.2"`, .3) + `<path d="M${P(dx, dy + 2.8).join(',')} a${f(1.1 * S)},${f(1.1 * S)} 0 0 1 0,${f(2 * S)}" fill="${T}" stroke="#333" stroke-width=".8"/>` + circ(dx + 2.2, dy + 1.6, .5, '#3a3a3a') + txt(dx + 18, dy + 3.5, 'ATMEGA328P-PU', 9, '#d4d4d4', 'text-anchor="middle" font-weight="700"') + txt(dx + 18, dy + 5.8, '1639 · MALAYSIA', 7, '#8a8a8a', 'text-anchor="middle"');
+  // resonador cerámico 16 MHz
+  s += rect(25.4, 28, 3.6, 2, '#d7c585', `stroke="#8a7a3a" stroke-width=".7"`, .3) + [0, 1, 2].map(i => rect(25.7 + i * 1.1, 30, .5, .7, '#bbb')).join('');
+  // ICSP (ATmega328P): 2x3 vertical
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 3; j++) s += rect(63.9 + i * 2.54, 12.3 + j * 2.54, 1.7, 1.7, '#1a1a1a') + circ(64.75 + i * 2.54, 13.15 + j * 2.54, .42, '#d4b24a');
+  s += txt(66, 21.4, 'ICSP', 6.5, WH, 'text-anchor="middle"');
+  // componentes SMD sueltos (resistencias y condensadores)
+  [[27, 14], [27, 16], [29, 17.5], [38, 16], [40.5, 16], [43, 16], [46, 17], [49, 16], [52, 17], [56, 17], [60, 17], [31, 38], [34, 38], [37, 38], [40, 38], [43, 38], [47, 38], [52, 38], [56, 38], [60, 38], [24.5, 22.2], [33, 22], [38, 21.5]].forEach((q, i) => s += rect(q[0], q[1], i % 3 ? 1.7 : 1.3, i % 3 ? 1 : 1.7, i % 4 === 0 ? '#caa766' : '#2b2b2b', `stroke="#111" stroke-width=".4"`));
+  // cabeceras (negras), serigrafía
+  s += rect(18.2, .55, 46.9, 2.54 * 1.4, '#16181a', `stroke="#000" stroke-width="1"`, .3);
+  s += rect(27.4, 49.2, 20.3, 2.54 * 1.1, '#16181a', `stroke="#000" stroke-width="1"`, .3) + rect(50.1, 49.2, 15.1, 2.54 * 1.1, '#16181a', `stroke="#000" stroke-width="1"`, .3);
+  s += txt(57.5, 9.6, 'DIGITAL (PWM= ~)', 7, WH, 'text-anchor="middle" opacity=".85"') + txt(37.5, 47.4, 'POWER', 8, WH, 'text-anchor="middle" opacity=".85"') + txt(57.6, 47.4, 'ANALOG IN', 8, WH, 'text-anchor="middle" opacity=".85"');
+  // logotipo ∞ y rótulos
+  const [lx, ly] = P(52, 36.6);
+  s += txt(40, 41.6, 'ARDUINO', 17, WH, 'text-anchor="middle" font-weight="700" letter-spacing="1.5"') + txt(61, 44.1, 'UNO', 13, WH, 'text-anchor="middle" font-weight="700"')
+    + `<path d="M${f(lx - 17)},${f(ly)} C${f(lx - 17)},${f(ly - 12)} ${f(lx - 3)},${f(ly - 12)} ${f(lx)},${f(ly)} C${f(lx + 3)},${f(ly + 12)} ${f(lx + 17)},${f(ly + 12)} ${f(lx + 17)},${f(ly)} C${f(lx + 17)},${f(ly - 12)} ${f(lx + 3)},${f(ly - 12)} ${f(lx)},${f(ly)} C${f(lx - 3)},${f(ly + 12)} ${f(lx - 17)},${f(ly + 12)} ${f(lx - 17)},${f(ly)} Z" fill="none" stroke="${WH}" stroke-width="3.4" stroke-linejoin="round"/>`
+    + `<line x1="${f(lx - 12)}" y1="${f(ly)}" x2="${f(lx - 6)}" y2="${f(ly)}" stroke="${WH}" stroke-width="2.4"/><line x1="${f(lx + 6)}" y1="${f(ly)}" x2="${f(lx + 12)}" y2="${f(ly)}" stroke="${WH}" stroke-width="2.4"/><line x1="${f(lx + 9)}" y1="${f(ly - 3)}" x2="${f(lx + 9)}" y2="${f(ly + 3)}" stroke="${WH}" stroke-width="2.4"/>`;
+  return s;
+}
+/* ------------------------------------------------ ESP32-S3-DevKitC-1: 70 × 25,4 mm, USB a la izquierda, antena a la derecha ---- */
+function esp(X, Y, L, rgbOn) {
+  const { P, rect, circ, txt, line } = ctxOf(X, Y), W = 70, H = 25.4; let s = '';
+  s += `<rect x="${X}" y="${Y}" width="${f(W * S)}" height="${f(H * S)}" rx="${f(1.2 * S)}" fill="#171b1d" stroke="#000" stroke-width="2.4"/><rect x="${f(X + 5)}" y="${f(Y + 5)}" width="${f(W * S - 10)}" height="${f(H * S - 10)}" rx="${f(S)}" fill="none" stroke="#2d3438" stroke-width="1"/>`;
+  [[3.2, 3.2], [3.2, H - 3.2]].forEach(q => s += circ(q[0], q[1], 1.1, '#050606', `stroke="#d7b04a" stroke-width="1.6"`));
+  // cabeceras 2×22 (pitch 2,54): tiras negras
+  s += rect(3.4, 0, 56.6, 2.54, '#0a0b0c', `stroke="#000" stroke-width=".6"`) + rect(3.4, H - 2.54, 56.6, 2.54, '#0a0b0c', `stroke="#000" stroke-width=".6"`);
+  // módulo ESP32-S3-WROOM-1 (18 × 25,5 mm) con antena de PCB
+  const mx = 44.4, my = 3.7;
+  s += rect(mx, my, 25.4, 18, '#101314', `stroke="#000" stroke-width="1"`) + rect(mx, my, 15.8, 18, '#cfd2d5', `stroke="#8d9296" stroke-width="1.4"`) + rect(mx + 1, my + 1, 13.8, 16, 'none', `stroke="#a8adb1" stroke-width="1"`);
+  let ap = `M${P(mx + 16.5, my + 2.5).join(',')}`; for (let i = 0; i < 6; i++) { const xx = mx + 17.4 + i * 1.35; ap += ` H${P(xx, 0)[0]} V${P(0, my + (i % 2 ? 2.5 : 15.5))[1]}`; } s += `<path d="${ap}" fill="none" stroke="#d7b04a" stroke-width="2.6" stroke-linejoin="round"/>`;
+  s += txt(mx + 7.9, my + 6.6, 'ESP32-S3-WROOM-1', 8.5, '#2b2e30', 'text-anchor="middle" font-weight="700"') + txt(mx + 7.9, my + 9.3, 'N8R8 · 2.4 GHz', 7.5, '#4a4e50', 'text-anchor="middle"') + txt(mx + 7.9, my + 12.2, 'Espressif', 7.5, '#4a4e50', 'text-anchor="middle"') + rect(mx + 4.3, my + 13.4, 6.6, 2.2, 'none', `stroke="#6a6e70" stroke-width=".8"`);
+  // dos USB-C (sobresalen 1 mm): arriba USB nativo, abajo UART
+  const usbc = (cy, lab) => rect(-1.1, cy - 4.5, 8.4, 9, '#cdd0d3', `stroke="#868b90" stroke-width="1.4"`, 1.6) + rect(-0.2, cy - 3.2, 6.7, 6.4, '#101214', `stroke="#555" stroke-width=".6"`, 1.3) + rect(.6, cy - .5, 5, 1, '#c9a227') + txt(11, cy + 1.2, lab, 7.5, WH, 'text-anchor="middle" font-weight="700"');
+  s += usbc(6.4, 'USB') + usbc(19, 'UART');
+  // pulsadores BOOT y RST
+  const btn = (cy, lab) => rect(14.8, cy - 1.9, 3.8, 3.8, '#cfd2d5', `stroke="#6a6e72" stroke-width="1"`, .4) + circ(16.7, cy, 1.1, '#26292b', `stroke="#000" stroke-width=".8"`) + txt(21.8, cy + 1, lab, 7, WH, 'text-anchor="start"');
+  s += btn(6.9, 'BOOT') + btn(18.5, 'RST');
+  // CP2102N, regulador AMS1117-3.3, condensadores
+  s += rect(24.6, 9.9, 5, 5, '#1a1a1a', `stroke="#000" stroke-width=".6"`) + circ(25.5, 10.8, .4, '#777') + txt(27.1, 13.3, 'CP2102N', 4.4, '#999', 'text-anchor="middle"') + rect(33.6, 4.6, 6.8, 3.4, '#1b1b1b') + rect(34.4, 2.9, 5.2, 1.7, '#b8bbbf') + rect(35.8, 8, 2, 1.3, '#b8bbbf') + txt(37, 11.4, 'AMS1117', 5, '#999', 'text-anchor="middle"');
+  [[32, 10], [32, 15.4], [41.2, 12.5], [41.2, 16.3], [38, 19.6], [28.4, 19.5], [28.4, 6]].forEach((q, i) => s += rect(q[0], q[1], i % 2 ? 1.7 : 1.1, i % 2 ? 1 : 1.7, i % 3 ? '#caa766' : '#2e2e2e', `stroke="#000" stroke-width=".4"`));
+  // LED de alimentación, LED RGB (GPIO48) y serigrafía
+  s += rect(30.2, 19.1, 1.6, 1.2, '#E0301E', `stroke="#400" stroke-width=".6"`) + circ(31, 19.7, 2.1, '#E0301E', 'opacity=".28"') + txt(31, 23.1, 'PWR', 5.5, WH, 'text-anchor="middle"');
+  s += rect(35.4, 17.7, 4.6, 4.6, '#e9e9e9', `stroke="#555" stroke-width=".8"`, .3) + circ(37.7, 20, 1.5, rgbOn ? '#ff4d4d' : '#c9c9c9', `stroke="#888" stroke-width=".6"`) + (rgbOn ? circ(37.7, 20, 4, '#ff4d4d', 'opacity=".28"') : '') + txt(37.7, 24.2, 'RGB·48', 5.5, WH, 'text-anchor="middle"');
+  s += txt(23, 17.4, 'ESP32-S3-DevKitC-1', 10, WH, 'font-weight="700" opacity=".92"') + txt(23, 19.7, 'v1.0', 6.5, WH, 'opacity=".7"');
+  return s;
+}
+root.MCUArt = { uno, esp, S };
+})(window);
+
 /* Protoboard 830 puntos + instrumentos (equivale al entorno físico / Tinkercad) */
 (function (root) {
 'use strict';
@@ -1564,10 +1658,11 @@ const keyXY = (k, ctx) => { const p = B.parseKey(k); if (p.t === 'h') return { x
 
 /* ---------- placas MCU (sockets) ---------- */
 B.BOARDS = {
-  UNO: { name: 'Arduino UNO', vdd: 5, w: 660, h: 340, x1: 200,
+  UNO: { name: 'Arduino UNO', vdd: 5, w: 702, h: 546, xt: 192, xb: 286, gt: 16, gb: 26, pitch: 26, ry: 24,
     pins: [['SCL', 'n'], ['SDA', 'n'], ['AREF', 'n'], ['GND', 'n'], ['D13', 'd'], ['D12', 'd'], ['D11', 'd'], ['D10', 'd'], ['D9', 'd'], ['D8', 'd'], null, ['D7', 'd'], ['D6', 'd'], ['D5', 'd'], ['D4', 'd'], ['D3', 'd'], ['D2', 'd'], ['D1', 'd'], ['D0', 'd'], 'row', ['NC', 'n'], ['IOREF', 'n'], ['RESET', 'n'], ['3V3', 'p3'], ['5V', 'p5'], ['GND', 'g'], ['GND2', 'g'], ['VIN', 'x'], null, ['A0', 'a'], ['A1', 'a'], ['A2', 'a'], ['A3', 'a'], ['A4', 'a'], ['A5', 'a']] },
-  ESP32: { name: 'ESP32 DevKit', vdd: 3.3, w: 720, h: 280, x1: 60,
-    pins: [['GPIO2', 'd'], ['GPIO4', 'd'], ['GPIO5', 'd'], ['GPIO12', 'd'], ['GPIO13', 'd'], ['GPIO14', 'd'], ['GPIO15', 'd'], ['GPIO16', 'd'], ['GPIO17', 'd'], ['GPIO18', 'd'], ['GPIO19', 'd'], ['GPIO21', 'd'], ['GPIO22', 'd'], ['GPIO23', 'd'], 'row', ['3V3', 'p3'], ['GND', 'g'], ['GND2', 'g'], ['5V', 'p5'], null, ['GPIO25', 'd'], ['GPIO26', 'd'], ['GPIO27', 'd'], ['GPIO32', 'd'], ['GPIO33', 'd'], ['GPIO34', 'a'], ['GPIO35', 'a'], ['GPIO36', 'a'], ['GPIO39', 'a']] }
+  ESP32: { name: 'ESP32-S3 DevKitC-1', vdd: 3.3, w: 717, h: 260, xt: 48, xb: 48, gt: 0, gb: 0, pitch: 26, ry: 13,
+    pins: [['GND', 'g'], ['5V', 'p5'], ['GPIO14', 'd'], ['GPIO13', 'd'], ['GPIO12', 'd'], ['GPIO11', 'd'], ['GPIO10', 'd'], ['GPIO9', 'd'], ['GPIO46', 'd'], ['GPIO3', 'd'], ['GPIO8', 'd'], ['GPIO18', 'd'], ['GPIO17', 'd'], ['GPIO16', 'd'], ['GPIO15', 'd'], ['GPIO7', 'd'], ['GPIO6', 'd'], ['GPIO5', 'd'], ['GPIO4', 'd'], ['RST', 'n'], ['3V3', 'p3'], ['3V3b', 'p3'], 'row',
+      ['GND2', 'g'], ['GND3', 'g'], ['GPIO19', 'd'], ['GPIO20', 'd'], ['GPIO21', 'd'], ['GPIO47', 'd'], ['GPIO48', 'd'], ['GPIO45', 'd'], ['GPIO0', 'd'], ['GPIO35', 'd'], ['GPIO36', 'd'], ['GPIO37', 'd'], ['GPIO38', 'd'], ['GPIO39', 'd'], ['GPIO40', 'd'], ['GPIO41', 'd'], ['GPIO42', 'd'], ['GPIO2', 'd'], ['GPIO1', 'd'], ['GPIO44', 'd'], ['GPIO43', 'd'], ['GND4', 'g']] }
 };
 /* mapa pin-nombre -> número de pin Arduino / GPIO */
 B.pinNumber = (board, name) => { if (board === 'UNO') { if (/^D\d+$/.test(name)) return +name.slice(1); if (/^A\d$/.test(name)) return 14 + +name.slice(1); return null; } const m = name.match(/^GPIO(\d+)$/); return m ? +m[1] : null; };
@@ -1678,7 +1773,7 @@ B.Editor = class {
     <details open><summary>Cables</summary>${UI.WIRECOLORS.map(c => btn('WIRE:' + c[0], 'Cable ' + c[1])).join('')}</details>
     <details open><summary>Integrados</summary>${ics.map(d => btn('IC:' + d.id, d.name, d.desc)).join('')}</details>
     <details open><summary>Instrumentos</summary>${btn('DMM', 'Multímetro')}${btn('LP', 'Sonda lógica')}${btn('LA', 'Analizador lógico')}</details>
-    <details open><summary>Alimentación y placas</summary>${btn('MB102', 'Fuente MB102 (3,3/5 V)')}${btn('MCU:UNO', 'Arduino UNO')}${btn('MCU:ESP32', 'ESP32 DevKit')}${btn('MCU:none', 'Quitar placa MCU')}</details>`;
+    <details open><summary>Alimentación y placas</summary>${btn('MB102', 'Fuente MB102 (3,3/5 V)')}${btn('MCU:UNO', 'Arduino UNO')}${btn('MCU:ESP32', 'ESP32-S3 DevKitC-1')}${btn('MCU:none', 'Quitar placa MCU')}</details>`;
     el.addEventListener('click', e => { const b = e.target.closest('.pi'); if (!b) return; const t = b.dataset.t;
       if (t.startsWith('MCU:')) { const n = t.slice(4); this.board.mcu = n === 'none' ? null : { board: n, code: this.board.mcu && this.board.mcu.code }; this.sel = this.board.mcu ? 'mcu' : null; this.changed(); this.onChange && this.onChange('mcu'); return; }
       if (t === 'MB102') { this.board.mb.on = !this.board.mb.on; this.changed(); this.hint(this.board.mb.on ? 'Fuente MB102 conectada a los carriles.' : 'Fuente desconectada.'); return; }
@@ -1710,7 +1805,7 @@ B.Editor = class {
   toDoc(e) { const r = this.svg.getBoundingClientRect(); return { x: this.view.x + (e.clientX - r.left) * this.view.k, y: this.view.y - 40 + (e.clientY - r.top) * this.view.k }; }
   geom() { // sockets y pines de instrumentos
     const ctx = { sockets: {}, ipins: {} };
-    if (this.board.mcu) { const bd = B.BOARDS[this.board.mcu.board], mp = this.board.mcu.pos || { x: 0, y: 0 }, by = 420 + mp.y; let x = 60 + mp.x, y = by + 24, row = 0; bd.pins.forEach(p => { if (p === 'row') { row = 1; x = (bd.board2 || 60 + (bd.x1 === 200 ? 90 : 0)) + mp.x; y = by + bd.h - 24; return; } if (!p) { x += 18; return; } if (p[1] === 'n') { (ctx.dummies = ctx.dummies || []).push({ x, y, name: p[0] }); x += 28; return; } ctx.sockets['s:' + p[0]] = { x, y, name: p[0], kind: p[1] }; x += 28; }); ctx.mcuBox = { x: 40 + mp.x, y: by, w: bd.w, h: bd.h }; }
+    if (this.board.mcu) { const bd = B.BOARDS[this.board.mcu.board], mp = this.board.mcu.pos || { x: 0, y: 0 }, by = 420 + mp.y, X0 = 40 + mp.x, pt = bd.pitch || 26, ry = bd.ry || 24; let x = X0 + bd.xt, y = by + ry, row = 0; bd.pins.forEach(p => { if (p === 'row') { row = 1; x = X0 + bd.xb; y = by + bd.h - ry; return; } if (!p) { x += row ? bd.gb : bd.gt; return; } if (p[1] === 'n') { (ctx.dummies = ctx.dummies || []).push({ x, y, name: p[0] }); x += pt; return; } ctx.sockets['s:' + p[0]] = { x, y, name: p[0], kind: p[1] }; x += pt; }); ctx.mcuBox = { x: X0, y: by, w: bd.w, h: bd.h }; }
     return ctx;
   }
   /* ---- interacción ---- */
@@ -1769,7 +1864,7 @@ B.Editor = class {
     if (it.type === 'IC') { F.push({ k: 'label', label: 'Referencia', type: 'text', value: it.label }); before = `<p class="mut">${esc(DSim.IC[it.ic].desc)}</p>` + dsLinkHTML(it.ic); }
     if (it.type === 'DMM') F.push({ k: 'mode', label: 'Modo', type: 'sel', opts: [{ v: 'V', t: 'Voltios (DC)' }, { v: 'A', t: 'Amperios (en serie)' }, { v: 'R', t: 'Ohmios (sin alimentar)' }], value: it.mode });
     if (it.type === 'D7') F.push({ k: 'ca', label: 'Tipo', type: 'sel', opts: [{ v: '0', t: 'Cátodo común' }, { v: '1', t: 'Ánodo común (5161)' }], value: String(it.ca) });
-    if (it.type === 'LP') before = '<p class="mut">Verde: nivel bajo (≤ 1,6 V). Rojo: nivel alto (≥ 3,3 V).</p>';
+    if (it.type === 'LP') before = '<p class="mut">Rojo: nivel alto (≥ 2 V). Verde: nivel bajo (≤ 0,8 V). Ámbar: alta impedancia (nada fija el nodo) o nivel indefinido.</p>';
     UI.pop(cv, e.clientX, e.clientY, nm, F, (k, v) => { it[k] = (k === 'ca') ? +v : v; this.changed(); }, { before, del: true, onDel: () => { this.sel = it.id; this.removeSel(); } });
   }
   md(e) {
@@ -1897,7 +1992,7 @@ B.Editor = class {
   renderProps() {
     const pe = this.root.querySelector('#bprops'), b = this.board, it = b.items.find(i => i.id === this.sel);
     const mon = this.sel === 'mcu' && !!b.mcu, pm = this.root.querySelector('#bmcu');
-    this.root.classList.toggle('mcusel', mon); if (pm) pm.hidden = !mon; pe.hidden = mon; this.root.querySelector('#bph').textContent = mon ? 'Programa de la placa · ' + (b.mcu.board === 'UNO' ? 'Arduino UNO' : 'ESP32 DevKit') : 'Banco';
+    this.root.classList.toggle('mcusel', mon); if (pm) pm.hidden = !mon; pe.hidden = mon; this.root.querySelector('#bph').textContent = mon ? 'Programa de la placa · ' + (b.mcu.board === 'UNO' ? 'Arduino UNO' : 'ESP32-S3 DevKitC-1') : 'Banco';
     if (this._mon !== mon) { this._mon = mon; this.onChange && this.onChange('mcusel', mon); }
     if (mon) return;
     let h = '';
@@ -1909,7 +2004,7 @@ B.Editor = class {
       if (it.type === 'LED') h += `<label>Color<select data-ip="color">${['red', 'green', 'yellow', 'blue'].map(c => `<option ${it.color === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>`;
       if (it.type === 'IC') h += `<p class="mut">${esc(DSim.IC[it.ic].desc)}</p>${dsLinkHTML(it.ic)}<label>Referencia<input data-ip="label" value="${esc(it.label)}"></label><div id="pintab"></div>`;
       if (it.type === 'DMM') h += `<label>Modo<select data-ip="mode"><option value="V" ${it.mode === 'V' ? 'selected' : ''}>Voltios (DC)</option><option value="A" ${it.mode === 'A' ? 'selected' : ''}>Amperios (en serie)</option><option value="R" ${it.mode === 'R' ? 'selected' : ''}>Ohmios (sin alimentar)</option></select></label><div class="dmm" id="dmmv">—</div><button class="b sm prim" data-a="logm">Anotar medida en el cuaderno</button><label>Condición de la medida<input id="logc" placeholder="p. ej. pulsador sin pulsar"></label>`;
-      if (it.type === 'LP') h += `<div class="dmm" id="lpv">—</div><p class="mut">Verde: nivel bajo (≤ 1,6 V). Rojo: nivel alto (≥ 3,3 V). Entre ambos no se enciende ninguno.</p>`;
+      if (it.type === 'LP') h += `<div class="dmm" id="lpv">—</div><p class="mut">Rojo: nivel alto (≥ 2 V). Verde: nivel bajo (≤ 0,8 V). Ámbar: alta impedancia (nada fija el nodo) o nivel indefinido.</p>`;
       if (it.type === 'WIRE') h += `<p class="mut">Supr para borrar el cable.</p>`;
       h += '<button class="b sm" data-del>Eliminar</button>';
     }
@@ -1924,7 +2019,7 @@ B.Editor = class {
       for (let k = 1; k <= d.n; k++) { const n = sp.pins[k - 1], v = n != null ? this.sim.v[n] : null; const lv = v == null ? '—' : v >= (sp.fam.kind === 'ttl' ? 2 : 0.7 * (sp.vcc || 5)) ? '1' : v <= (sp.fam.kind === 'ttl' ? 0.8 : 0.3 * (sp.vcc || 5)) ? '0' : '?'; h += `<tr><td>${k}</td><td>${esc(d.pn[k] || '')}</td><td>${v == null ? '—' : v.toFixed(2)}</td><td>${lv}</td></tr>`; }
       t.innerHTML = h + '</table>' + (sp.burned ? '<p class="warn">Integrado dañado.</p>' : ''); } }
     if (it.type === 'DMM') { const el = this.root.querySelector('#dmmv'), r = this.dmmRead(it); if (el) el.textContent = r ? r.text : '—'; }
-    if (it.type === 'LP') { const el = this.root.querySelector('#lpv'); if (el) { const n = this.nl.index(B.netOf(it.tip)), v = n == null ? 0 : this.sim.v[n]; el.textContent = v >= 3.3 ? '1 · alto (' + v.toFixed(2) + ' V)' : v <= 1.6 ? '0 · bajo (' + v.toFixed(2) + ' V)' : 'indeterminado (' + v.toFixed(2) + ' V)'; } }
+    if (it.type === 'LP') { const el = this.root.querySelector('#lpv'); if (el) { const q = this.lpState(it); el.textContent = q.s === 'H' ? '1 · alto (' + q.v.toFixed(2) + ' V)' : q.s === 'L' ? '0 · bajo (' + q.v.toFixed(2) + ' V)' : 'Z · alta impedancia (' + q.why + ')'; } }
   }
   ohms(it) { // resistencia entre las puntas con el circuito sin alimentar (solo R y cables)
     const par = {}, f = (x) => par[x] === undefined || par[x] === x ? (par[x] = x) : (par[x] = f(par[x])), un = (a, b) => { par[f(a)] = f(b); };
@@ -2053,7 +2148,8 @@ B.Editor = class {
       const a = pos(it.a), c = pos(it.b); if (!a || !c) return ''; const dx = c.x - a.x, dy = c.y - a.y, L = Math.hypot(dx, dy), ang = Math.atan2(dy, dx) * 180 / Math.PI, mx = (a.x + c.x) / 2, my = (a.y + c.y) / 2;
       let body = '';
       if (it.type === 'R') { const bd = B.bands(Schem.parseVal(it.v)); body = `<rect x="-17" y="-6" width="34" height="12" rx="5" fill="#D9C7A0" stroke="#8a7a58"/>` + [-10, -4, 2].map((x, i) => `<rect x="${x}" y="-6" width="3.4" height="12" fill="${bd[i]}"/>`).join('') + `<rect x="8" y="-6" width="3.4" height="12" fill="#c9a227"/>`; }
-      else if (it.type === 'LED') { const C = { red: '#B8432F', green: '#4F8A57', yellow: '#C9A227', blue: '#4C6A8C' }[it.color], on = ix !== undefined && sim.parts[ix] && sim.parts[ix].st.on; body = (on ? `<circle r="15" fill="${C}" opacity=".35"/>` : '') + `<circle r="8" fill="${on ? C : C}" opacity="${on ? 1 : .55}" stroke="#444"/><text x="-12" y="-9" font-size="9" fill="${INK}" transform="rotate(${-ang})">+</text>`; if (sim.parts[ix] && sim.parts[ix].dead) body += `<text y="3" text-anchor="middle" font-size="12" fill="#000" transform="rotate(${-ang})">✕</text>`; }
+      else if (it.type === 'LED') { const C = { red: '#B8432F', green: '#4F8A57', yellow: '#C9A227', blue: '#4C6A8C' }[it.color] || '#B8432F', on = ix !== undefined && sim.parts[ix] && sim.parts[ix].st.on, dead = sim.parts[ix] && sim.parts[ix].dead; const sg = (t, x, y) => `<text x="${x}" y="${y}" font-size="13" font-weight="700" text-anchor="middle" fill="${INK}" stroke="${BG}" stroke-width="2.4" paint-order="stroke" transform="rotate(${-ang} ${x} ${y})">${t}</text>`;
+        body = (on ? `<circle r="26" fill="${C}" opacity=".18"/><circle r="18" fill="${C}" opacity=".28"/>` : '') + `<path d="M8.4,-7 A11.2,11.2 0 1 0 8.4,7 Z" fill="${C}" opacity="${on ? .9 : .45}" stroke="#4a4a4a" stroke-width="1"/><circle r="8.4" fill="${C}" opacity="${on ? 1 : .5}" stroke="#555" stroke-width=".8"/><rect x="2.2" y="-4.6" width="3.4" height="9.2" fill="#aeb2b6" stroke="#6a6e72" stroke-width=".5"/><rect x="-5.4" y="-1.6" width="2" height="3.2" fill="#bfc3c7" stroke="#6a6e72" stroke-width=".5"/><path d="M-3.4,0 L2.2,-2" stroke="#8a8e92" stroke-width=".6"/><ellipse cx="-3" cy="-4.2" rx="3.2" ry="1.8" fill="#fff" opacity="${on ? .75 : .5}"/>${on ? '<circle r="4" fill="#fff" opacity=".45"/>' : ''}<line x1="9.8" y1="-7.6" x2="9.8" y2="7.6" stroke="#2b2b2b" stroke-width="1.6"/>` + sg('+', -17, -9) + sg('−', 17, -9) ; if (dead) body += `<text y="4" text-anchor="middle" font-size="14" font-weight="700" fill="#000" transform="rotate(${-ang})">✕</text>`; }
       else { const big = Schem.parseVal(it.v) >= 1e-6; body = big ? `<rect x="-15" y="-15" width="30" height="30" rx="5" fill="#33425b" stroke="#222"/><rect x="8" y="-15" width="7" height="30" fill="#b9c2d0"/><text x="-4" y="5" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">+</text>` : `<ellipse rx="9" ry="13" fill="#C97B3A" stroke="#7a4a1f"/>`; }
       return G(`<g transform="translate(${mx},${my}) rotate(${ang})"><line x1="${-L / 2}" y1="0" x2="${L / 2}" y2="0" stroke="#9a9a9a" stroke-width="2.4"/>${body}</g><circle cx="${a.x}" cy="${a.y}" r="2.6" fill="#555"/><circle cx="${c.x}" cy="${c.y}" r="2.6" fill="#555"/><rect x="${Math.min(a.x, c.x) - 8}" y="${Math.min(a.y, c.y) - (it.type === 'C' ? 15 : 9)}" width="${Math.abs(dx) + 16}" height="${Math.abs(dy) + (it.type === 'C' ? 30 : 18)}" fill="transparent"/>${it.type !== 'LED' ? `<text x="${mx}" y="${my - (it.type === 'C' ? 21 : 13)}" font-size="14" font-weight="700" text-anchor="middle" fill="${INK}" stroke="${BG}" stroke-width="3" paint-order="stroke">${esc(it.v)}${it.type === 'R' ? 'Ω' : 'F'}</text>` : ''}` + selr(Math.min(a.x, c.x) - 8, Math.min(a.y, c.y) - 12, Math.abs(dx) + 16, Math.abs(dy) + 24));
     }
@@ -2072,8 +2168,8 @@ B.Editor = class {
       const seg = { a: [10, 0, 34, 5], b: [46, 6, 5, 26], c: [46, 38, 5, 26], d: [10, 64, 34, 5], e: [4, 38, 5, 26], f: [4, 6, 5, 26], g: [10, 32, 34, 5] };
       Object.entries(seg).forEach(([k2, r], i) => s += `<rect x="${sx + r[0] - 2}" y="${sy + r[1] - 2}" width="${r[2]}" height="${r[3]}" rx="1.5" fill="${on[i] ? '#E0553A' : '#454845'}"/>`); s += `<circle cx="${sx + 54}" cy="${sy + 66}" r="2.6" fill="${on[7] ? '#E0553A' : '#454845'}"/>`;
       return G(s + selr(x, y, w, hh)); }
-    if (it.type === 'LP') { const t = pos(it.tip); if (!t) return ''; const A = t.y < 190 ? 156 : 24, n = this.nl.index(B.netOf(it.tip)), v = n == null ? 0 : sim.v[n]; const hi = v >= 3.3, lo = v <= 1.6 && n != null;
-      return G(`<g transform="translate(${t.x},${t.y}) rotate(${A})"><path d="M0,0 L-2.4,-16 L2.4,-16 Z" fill="#b9bcc0" stroke="#555" stroke-width=".8"/><path d="M-4,-16 L4,-16 L7,-34 L-7,-34 Z" fill="#E8E4DA" stroke="#555"/><rect x="-7" y="-122" width="14" height="88" rx="4" fill="#E0B531" stroke="#333"/><rect x="-7" y="-60" width="14" height="5" fill="#B85D34"/><rect x="-7" y="-44" width="14" height="3" fill="#333"/><circle cx="0" cy="-104" r="3.6" fill="${hi ? '#E0553A' : '#6a2a22'}" stroke="#222"/><circle cx="0" cy="-92" r="3.6" fill="${lo ? '#4FA45C' : '#27402b'}" stroke="#222"/><circle cx="0" cy="-80" r="3.2" fill="#555" stroke="#222"/><text x="12" y="-102" font-size="7" fill="${MUTE}" transform="rotate(${-A} 12 -102)">1</text><text x="12" y="-90" font-size="7" fill="${MUTE}" transform="rotate(${-A} 12 -90)">0</text><path d="M0,-122 C10,-150 50,-150 60,-130" fill="none" stroke="#1F2421" stroke-width="2.4"/></g><circle cx="${t.x}" cy="${t.y}" r="2.6" fill="#B85D34"/>` + selr(t.x - 40, t.y < 190 ? t.y : t.y - 125, 80, 125)); }
+    if (it.type === 'LP') { const t = pos(it.tip); if (!t) return ''; const A = t.y < 190 ? 156 : 24, lp = this.lpState(it), hi = lp.s === 'H', lo = lp.s === 'L', zz = lp.s === 'Z';
+      return G(`<g transform="translate(${t.x},${t.y}) rotate(${A})"><path d="M0,0 L-2.4,-16 L2.4,-16 Z" fill="#b9bcc0" stroke="#555" stroke-width=".8"/><path d="M-4,-16 L4,-16 L7,-34 L-7,-34 Z" fill="#E8E4DA" stroke="#555"/><rect x="-7" y="-134" width="14" height="100" rx="4" fill="#E0B531" stroke="#333"/><rect x="-7" y="-62" width="14" height="5" fill="#B85D34"/><rect x="-7" y="-46" width="14" height="3" fill="#333"/>${hi ? '<circle cx="0" cy="-116" r="9" fill="#E0553A" opacity=".35"/>' : ''}${lo ? '<circle cx="0" cy="-102" r="9" fill="#4FA45C" opacity=".35"/>' : ''}${zz ? '<circle cx="0" cy="-88" r="9" fill="#F2B134" opacity=".4"/>' : ''}<circle cx="0" cy="-116" r="4" fill="${hi ? '#FF5A3C' : '#6a2a22'}" stroke="#222"/><circle cx="0" cy="-102" r="4" fill="${lo ? '#5BD16D' : '#27402b'}" stroke="#222"/><circle cx="0" cy="-88" r="4" fill="${zz ? '#FFC94A' : '#5a4a1a'}" stroke="#222"/><text x="12" y="-114" font-size="8" font-weight="700" fill="${MUTE}" transform="rotate(${-A} 12 -114)">1</text><text x="12" y="-100" font-size="8" font-weight="700" fill="${MUTE}" transform="rotate(${-A} 12 -100)">0</text><text x="12" y="-86" font-size="8" font-weight="700" fill="${MUTE}" transform="rotate(${-A} 12 -86)">Z</text><path d="M0,-134 C10,-160 50,-160 60,-140" fill="none" stroke="#1F2421" stroke-width="2.4"/></g><circle cx="${t.x}" cy="${t.y}" r="2.6" fill="#B85D34"/>` + selr(t.x - 40, t.y < 190 ? t.y : t.y - 135, 80, 135)); }
     if (it.type === 'DMM') { const a = pos(it.red), c = pos(it.black); if (!a || !c) return ''; const bp = it.bpos || { x: Math.max(a.x, c.x) + 20, y: 380 }, bx = bp.x + 60, by = bp.y, r = this.dmmRead(it), md = it.mode || 'V', BW = 190, BH = 160;
       const dial = [['V', 'V', 36], ['A', 'A', 78], ['R', 'Ω', 120]].map(([m, lb, dx]) => `<g data-dmode="${m}" data-item="${it.id}" style="cursor:pointer"><title>${m === 'V' ? 'Voltios DC' : m === 'A' ? 'Amperios DC (en serie)' : 'Ohmios (circuito sin alimentar)'}</title><circle cx="${bx - 60 + dx}" cy="${by + 106}" r="17" fill="${md === m ? '#B85D34' : '#2d302e'}" stroke="#000" stroke-width="1.5"/><text x="${bx - 60 + dx}" y="${by + 113}" font-size="21" font-weight="700" fill="#fff" text-anchor="middle" pointer-events="none">${lb}</text></g>`).join('');
       return G(`<path d="M${a.x},${a.y} Q${a.x + 20},${by - 30} ${bx - 20},${by + BH - 6}" fill="none" stroke="#B8432F" stroke-width="3.4"/><path d="M${c.x},${c.y} Q${c.x + 50},${by - 10} ${bx + 10},${by + BH - 6}" fill="none" stroke="#1F2421" stroke-width="3.4"/><circle cx="${a.x}" cy="${a.y}" r="4" fill="#B8432F"/><circle cx="${c.x}" cy="${c.y}" r="4" fill="#1F2421"/>
@@ -2087,54 +2183,24 @@ B.Editor = class {
       return G(`<g data-bbody="${it.id}" data-bx="${X}" data-by="${Y}" style="cursor:move"><rect x="${X}" y="${Y}" width="${24 + 8 * 22 + 42}" height="64" rx="6" fill="#2a2d2c" stroke="#111" stroke-width="1.5"/></g><rect x="${X + 6}" y="${Y + 6}" width="80" height="10" rx="2" fill="#B85D34"/><text x="${X + 10}" y="${Y + 14}" font-size="8" fill="#fff">LOGIC 8CH · 24 MHz</text>` + s + selr(X, Y, 24 + 8 * 22 + 42, 64)); }
     return '';
   }
+  /* sonda lógica: H (alto), L (bajo) o Z (alta impedancia: nada fija el nodo, o tensión fuera de los niveles válidos) */
+  lpState(it) {
+    const n = this.nl.index(B.netOf(it.tip)), v = n == null ? 0 : this.sim.v[n];
+    const vh = (this.board.mb && this.board.mb.on ? 0 : 0) || 2.0;
+    if (n == null || (n > 0 && this.nl.deg && this.nl.deg[n] === 0)) return { s: 'Z', v, why: 'nada fija el nodo' };
+    if (v >= vh) return { s: 'H', v }; if (v <= 0.8) return { s: 'L', v };
+    return { s: 'Z', v, why: 'tensión indefinida' };
+  }
   drawMcu(ctx) {
     const b = this.board.mcu, bd = B.BOARDS[b.board], bx = ctx.mcuBox, X = bx.x, Y = bx.y, W = bx.w, H = bx.h, uno = b.board === 'UNO'; let s = '';
     const L = this.mcuPart && this.mcuPart.ctl ? this.mcuPart.ctl.ledL : 0;
-    if (uno) {
-      s += `<rect x="${X}" y="${Y}" width="${W}" height="${H}" rx="12" fill="#0a8a92" stroke="#06494e" stroke-width="2"/><rect x="${X + 6}" y="${Y + 6}" width="${W - 12}" height="${H - 12}" rx="9" fill="none" stroke="#0fa7b0" stroke-width="1"/>`;
-      [[26, 30], [26, H - 30], [W - 40, H - 30], [W - 120, 30]].forEach(q => s += `<circle cx="${X + q[0]}" cy="${Y + q[1]}" r="9" fill="#F9F8F6" stroke="#06494e" stroke-width="3"/>`);
-      // USB tipo B y conector de alimentación
-      s += `<rect x="${X - 22}" y="${Y + 70}" width="96" height="84" rx="3" fill="#c9ccd0" stroke="#6b6f74" stroke-width="2"/><rect x="${X - 10}" y="${Y + 84}" width="70" height="56" fill="#9aa0a6"/><rect x="${X + 6}" y="${Y + 96}" width="40" height="32" fill="#f1f1f1" stroke="#777"/><text x="${X + 26}" y="${Y + 168}" font-size="10" fill="#e5f6f7" text-anchor="middle">USB</text>`;
-      s += `<rect x="${X - 22}" y="${Y + H - 120}" width="88" height="70" rx="3" fill="#1c1c1c" stroke="#000" stroke-width="2"/><circle cx="${X + 24}" cy="${Y + H - 85}" r="13" fill="#050505" stroke="#444" stroke-width="2"/><circle cx="${X + 24}" cy="${Y + H - 85}" r="3.5" fill="#888"/><text x="${X + 24}" y="${Y + H - 36}" font-size="10" fill="#e5f6f7" text-anchor="middle">7–12 V</text>`;
-      // reset
-      s += `<rect x="${X + 100}" y="${Y + 58}" width="30" height="30" rx="3" fill="#c9ccd0" stroke="#555"/><circle cx="${X + 115}" cy="${Y + 73}" r="9" fill="#C62828" stroke="#600"/><text x="${X + 115}" y="${Y + 106}" font-size="9" fill="#e5f6f7" text-anchor="middle">RESET</text>`;
-      // ATmega16U2 (QFN) y cristal
-      s += `<rect x="${X + 150}" y="${Y + 120}" width="34" height="34" fill="#1a1a1a" stroke="#000"/><text x="${X + 167}" y="${Y + 140}" font-size="6" fill="#aaa" text-anchor="middle">16U2</text><rect x="${X + 200}" y="${Y + 124}" width="26" height="12" rx="6" fill="#d7d9dc" stroke="#777"/><rect x="${X + 100}" y="${Y + 128}" width="24" height="12" rx="2" fill="#d4d6d9" stroke="#777"/>`;
-      // ATmega328P DIP-28
-      s += `<rect x="${X + 270}" y="${Y + 130}" width="190" height="52" rx="2" fill="#1a1a1a" stroke="#000" stroke-width="1.5"/><path d="M${X + 270},${Y + 150} a8,8 0 0 1 0,12" fill="#0a8a92"/>`;
-      for (let i = 0; i < 14; i++) s += `<rect x="${X + 276 + i * 13}" y="${Y + 124}" width="6" height="8" fill="#c8ccd0"/><rect x="${X + 276 + i * 13}" y="${Y + 180}" width="6" height="8" fill="#c8ccd0"/>`;
-      s += `<text x="${X + 365}" y="${Y + 152}" font-size="9" fill="#ddd" text-anchor="middle">ATMEGA328P-PU</text><text x="${X + 365}" y="${Y + 166}" font-size="8" fill="#999" text-anchor="middle">1639 · 16 MHz</text>`;
-      // regulador, cristal, condensadores
-      s += `<rect x="${X + 240}" y="${Y + 230}" width="40" height="26" fill="#1a1a1a"/><rect x="${X + 246}" y="${Y + 222}" width="28" height="8" fill="#b9bcc0"/><circle cx="${X + 320}" cy="${Y + 244}" r="12" fill="#222" stroke="#000"/><circle cx="${X + 350}" cy="${Y + 244}" r="12" fill="#222" stroke="#000"/><rect x="${X + 410}" y="${Y + 232}" width="30" height="12" rx="6" fill="#d7d9dc" stroke="#777"/>`;
-      // ICSP
-      [[W - 68, 140], [W - 68, 100]].forEach(q => { for (let i = 0; i < 3; i++) s += `<rect x="${X + q[0] + i * 14}" y="${Y + q[1] - 6 + (q[1] === 140 ? 0 : 0)}" width="10" height="10" fill="#1a1a1a"/><circle cx="${X + q[0] + 5 + i * 14}" cy="${Y + q[1] - 1}" r="2" fill="#c9a227"/>`; });
-      // LEDs
-      s += `<circle cx="${X + W - 120}" cy="${Y + 90}" r="5" fill="#2ecc40" stroke="#064"/><text x="${X + W - 120}" y="${Y + 80}" font-size="8" fill="#e5f6f7" text-anchor="middle">ON</text><circle cx="${X + W - 150}" cy="${Y + 90}" r="5" fill="${L ? '#FFB300' : '#8a6a1a'}" stroke="#640"/><text x="${X + W - 150}" y="${Y + 80}" font-size="8" fill="#e5f6f7" text-anchor="middle">L</text><circle cx="${X + W - 180}" cy="${Y + 90}" r="5" fill="#a8a02a" stroke="#640"/><text x="${X + W - 180}" y="${Y + 80}" font-size="8" fill="#e5f6f7" text-anchor="middle">TX</text><circle cx="${X + W - 210}" cy="${Y + 90}" r="5" fill="#a8a02a" stroke="#640"/><text x="${X + W - 210}" y="${Y + 80}" font-size="8" fill="#e5f6f7" text-anchor="middle">RX</text>`;
-      s += `<text x="${X + 440}" y="${Y + 224 + 40}" font-size="34" font-weight="700" fill="#F9F8F6" opacity=".9" text-anchor="middle">ARDUINO</text><text x="${X + 440}" y="${Y + 222 + 70}" font-size="22" fill="#F9F8F6" opacity=".9" text-anchor="middle">UNO  ∞</text>`;
-      // cabeceras
-      const r0 = Y + 14, r1 = Y + H - 38;
-      s += `<rect x="${X + 46}" y="${r0}" width="${W - 92}" height="22" rx="2" fill="#17191a"/><rect x="${X + 46}" y="${r1}" width="${W - 92}" height="22" rx="2" fill="#17191a"/>`;
-    } else {
-      s += `<rect x="${X}" y="${Y}" width="${W}" height="${H}" rx="8" fill="#1d2021" stroke="#000" stroke-width="2"/><rect x="${X + 4}" y="${Y + 4}" width="${W - 8}" height="${H - 8}" rx="6" fill="none" stroke="#3a3f41" stroke-width="1"/>`;
-      // módulo ESP-WROOM-32 (derecha) con antena de PCB
-      const mx = X + W - 280, my = Y + 56, mw = 190, mh = H - 112;
-      s += `<rect x="${mx}" y="${my}" width="${mw}" height="${mh}" rx="2" fill="#c7cacd" stroke="#6b6f74" stroke-width="1.5"/><rect x="${mx + 14}" y="${my + 18}" width="${mw - 28}" height="${mh - 36}" fill="none" stroke="#9aa0a6"/><text x="${mx + mw / 2}" y="${my + mh / 2 - 6}" font-size="15" font-weight="700" fill="#333" text-anchor="middle">ESP-WROOM-32</text><text x="${mx + mw / 2}" y="${my + mh / 2 + 14}" font-size="10" fill="#444" text-anchor="middle">FCC ID 2AC7Z-ESPWROOM32 · CE</text>`;
-      s += `<rect x="${mx + mw}" y="${my}" width="86" height="${mh}" fill="#0f1214" stroke="#222"/>`; let ap = `M${mx + mw},${my + 16}`; for (let i = 0; i < 6; i++) { const xx = mx + mw + 10 + i * 12; ap += ` H${xx} V${my + (i % 2 ? 16 : mh - 16)}`; } s += `<path d="${ap}" fill="none" stroke="#c9a227" stroke-width="3"/>`;
-      // USB micro-B, CP2102, botones, LED, regulador
-      s += `<rect x="${X - 14}" y="${Y + H / 2 - 24}" width="52" height="48" rx="3" fill="#c9ccd0" stroke="#6b6f74" stroke-width="2"/><rect x="${X - 4}" y="${Y + H / 2 - 12}" width="32" height="24" fill="#1a1a1a"/><text x="${X + 12}" y="${Y + H / 2 + 42}" font-size="9" fill="#bbb" text-anchor="middle">micro-USB</text>`;
-      s += `<rect x="${X + 90}" y="${Y + H / 2 - 22}" width="44" height="44" fill="#141414" stroke="#000"/><text x="${X + 112}" y="${Y + H / 2 + 3}" font-size="8" fill="#9aa" text-anchor="middle">CP2102</text><rect x="${X + 160}" y="${Y + H / 2 - 32}" width="30" height="18" fill="#141414"/><rect x="${X + 166}" y="${Y + H / 2 - 40}" width="18" height="8" fill="#b9bcc0"/><text x="${X + 175}" y="${Y + H / 2 - 18 + 26}" font-size="7" fill="#9aa" text-anchor="middle">3V3 REG</text>`;
-      s += `<rect x="${X + 90}" y="${Y + 46}" width="30" height="24" rx="3" fill="#d4d6d9" stroke="#555"/><circle cx="${X + 105}" cy="${Y + 58}" r="7" fill="#222"/><text x="${X + 105}" y="${Y + 84}" font-size="9" fill="#ccc" text-anchor="middle">EN</text><rect x="${X + 90}" y="${Y + H - 70}" width="30" height="24" rx="3" fill="#d4d6d9" stroke="#555"/><circle cx="${X + 105}" cy="${Y + H - 58}" r="7" fill="#222"/><text x="${X + 105}" y="${Y + H - 90}" font-size="9" fill="#ccc" text-anchor="middle">BOOT</text>`;
-      s += `<circle cx="${X + 150}" cy="${Y + H - 58}" r="5" fill="#E0301E" stroke="#600"/><circle cx="${X + 170}" cy="${Y + H - 58}" r="5" fill="${L ? '#2c7bd6' : '#1c3a60'}" stroke="#036"/><text x="${X + 160}" y="${Y + H - 42}" font-size="8" fill="#ccc" text-anchor="middle">PWR · IO2</text>`;
-      s += `<text x="${X + 260}" y="${Y + H / 2 + 6}" font-size="20" font-weight="700" fill="#e8e8e8" opacity=".85">ESP32 DevKit</text>`;
-      const r0 = Y + 14, r1 = Y + H - 38;
-      s += `<rect x="${X + 40}" y="${r0}" width="${W - 80}" height="22" rx="2" fill="#0d0e0f"/><rect x="${X + 40}" y="${r1}" width="${W - 80}" height="22" rx="2" fill="#0d0e0f"/>`;
-    }
+    s += uno ? MCUArt.uno(X, Y, L) : MCUArt.esp(X, Y, L, L);
     (ctx.dummies || []).forEach(p => { s += `<rect x="${p.x - 7}" y="${p.y - 7}" width="14" height="14" rx="2" fill="#3a3d3b" stroke="#111"/><text x="${p.x}" y="${p.y + (p.y < bx.y + bx.h / 2 ? 22 : -12)}" font-size="9" text-anchor="middle" fill="#cfe7e9" opacity=".7">${p.name}</text>`; });
-    Object.entries(ctx.sockets).forEach(([k, p]) => { const hl = this.hover === k; s += `<rect data-k="${k}" x="${p.x - 7}" y="${p.y - 7}" width="14" height="14" rx="2" fill="${hl ? SAGE : '#d7d2c5'}" stroke="#111" style="cursor:crosshair"/><circle cx="${p.x}" cy="${p.y}" r="2.6" fill="#111" pointer-events="none"/><text x="${p.x}" y="${p.y + (p.y < bx.y + bx.h / 2 ? 22 : -12)}" font-size="9" text-anchor="middle" fill="#fff">${String(p.name).replace("GPIO", "IO")}</text>`; });
+    Object.entries(ctx.sockets).forEach(([k, p]) => { const hl = this.hover === k; s += `<rect data-k="${k}" x="${p.x - 7}" y="${p.y - 7}" width="14" height="14" rx="2" fill="${hl ? SAGE : '#d7d2c5'}" stroke="#111" style="cursor:crosshair"/><circle cx="${p.x}" cy="${p.y}" r="2.6" fill="#111" pointer-events="none"/><text x="${p.x}" y="${p.y + (p.y < bx.y + bx.h / 2 ? 22 : -12)}" font-size="9" text-anchor="middle" fill="#fff">${String(p.name).replace("GPIO", "IO").replace(/^GND\d$/, "GND").replace("3V3b", "3V3")}</text>`; });
     return s;
   }
   svgToImg() {
-    let x0 = -230, y0 = -50, w = B.hx(COLS) + 310, h = (this.board.mcu ? 860 : 480);
+    let x0 = -230, y0 = -50, w = B.hx(COLS) + 310, h = (this.board.mcu ? 1040 : 480);
     const clone = this.svg.cloneNode(true); clone.setAttribute('viewBox', `${x0} ${y0} ${w} ${h}`); clone.setAttribute('width', w); clone.setAttribute('height', h); clone.setAttribute('xmlns', NS); clone.setAttribute('font-family', 'Arial');
     return { svg: new XMLSerializer().serializeToString(clone), w, h };
   }
@@ -2220,7 +2286,7 @@ class McuCtl {
   compile() {
     const tr = M.transpile(this.src); this.tr = tr; const me = this, UNO = this.board === 'UNO';
     const R = {
-      HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2, LED_BUILTIN: UNO ? 13 : 2, A0: 14, A1: 15, A2: 16, A3: 17, A4: 18, A5: 19, DEC: 10, HEX: 16, BIN: 2, OCT: 8, PI: Math.PI,
+      HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2, LED_BUILTIN: UNO ? 13 : 48, A0: 14, A1: 15, A2: 16, A3: 17, A4: 18, A5: 19, DEC: 10, HEX: 16, BIN: 2, OCT: 8, PI: Math.PI,
       pinMode: (p, m) => { me.pm[p] = m; delete me.pwm[p]; }, digitalWrite: (p, v) => { me.out[p] = v ? 1 : 0; delete me.pwm[p]; },
       digitalRead: (p) => me.inl[p] ? 1 : 0, analogRead: (p) => { const k = this.idxOf[p]; if (k === undefined || !me.sim) return 0; const v = me.sim.vp[me.part.pins[k]]; return Math.max(0, Math.min(UNO ? 1023 : 4095, Math.round(v / me.vdd * (UNO ? 1023 : 4095)))); },
       analogWrite: (p, v) => { me.pwm[p] = Math.max(0, Math.min(255, v)) / 255; me.pm[p] = 1; },
@@ -2252,7 +2318,7 @@ class McuCtl {
     const dr = new Array(this.names.length);
     for (const k in this.idxOf) { const i = this.idxOf[k], m = this.pm[k];
       if (m === 1) { let v = this.out[k] || 0; if (this.pwm[k] !== undefined) v = ((this.t * 490) % 1) < this.pwm[k] ? 1 : 0; dr[i] = v ? 1 : 2; } else if (m === 2) dr[i] = 3; }
-    this.ledL = (this.out[this.board === 'UNO' ? 13 : 2] || 0) && this.pm[this.board === 'UNO' ? 13 : 2] === 1;
+    this.ledL = (this.out[this.board === 'UNO' ? 13 : 48] || 0) && this.pm[this.board === 'UNO' ? 13 : 48] === 1;
     return dr;
   }
   checkPins(sim) {
@@ -2336,7 +2402,7 @@ void loop() {
 /* ---------- ejemplos precargados (UNO y ESP32) ---------- */
 const EXP = {
   UNO: { L: 8, L2: 9, L3: 10, B: 2, B2: 3, B3: 4, PWM: 9, AN: 'A0', LCD: '12, 11, 5, 4, A0, A1' },
-  ESP32: { L: 4, L2: 5, L3: 18, B: 14, B2: 27, B3: 26, PWM: 4, AN: 34, LCD: '21, 22, 5, 18, 19, 23' }
+  ESP32: { L: 4, L2: 5, L3: 6, B: 15, B2: 16, B3: 17, PWM: 4, AN: 1, LCD: '7, 8, 9, 10, 11, 12' }
 };
 M.EXAMPLE_LIST = [
   { id: 'blink', title: '1 · Parpadeo (Blink)', code: (p) => `// Parpadeo del LED de la placa y de un LED externo en el pin ${p.L}
@@ -3338,7 +3404,7 @@ function buildGuide() {
   <p>Más detalles de cada pieza: pasa el ratón por encima y aparece su ayuda.</p>
 
   <h2 id="g6">6 · Programar Arduino / ESP32</h2>
-  <ul><li>En la pestaña Protoboard coloca una placa (Arduino UNO o ESP32 DevKit) y <b>haz clic en ella</b>: el panel derecho se convierte en el editor del programa, con el monitor serie y la pantalla LCD. «Compilar y simular» lo ejecuta contra lo que hayas cableado en la protoboard.</li><li>El editor colorea el código como el IDE de Arduino, numera las líneas, sangra solo, y sugiere funciones, constantes, métodos de <code>Serial</code> y <code>lcd</code> y plantillas (<code>for</code>, <code>if</code>, <code>switch</code>…) mientras escribes. Ctrl+Espacio fuerza la lista, Tab o Enter aceptan, Ctrl+/ comenta líneas. El selector «Ejemplos» carga programas de partida (Blink, pulsador, semáforo, PWM, voltímetro, LCD, reloj, marcador…) adaptados a la placa elegida.</li><li>Soportado: variables, funciones, <code>if / for / while</code>, <code>millis()</code>, <code>delay()</code>, <code>pinMode / digitalWrite / digitalRead</code>, <code>analogRead / analogWrite</code>, <code>Serial</code>, <code>sprintf</code> y <code>LiquidCrystal</code> (pantalla virtual, no usa pines).</li><li>La división de enteros trunca como en C. No hay desbordamiento de 16 bits en el UNO ni I²C real.</li><li>El ESP32 funciona a 3,3 V: lo que conectes a más de 3,7 V en un pin es una avería, y se avisa.</li><li><code>INPUT_PULLUP</code> activa la resistencia interna: con el pulsador sin pulsar el pin lee 1.</li></ul>
+  <ul><li>En la pestaña Protoboard coloca una placa (Arduino UNO o ESP32-S3 DevKitC-1) y <b>haz clic en ella</b>: el panel derecho se convierte en el editor del programa, con el monitor serie y la pantalla LCD. «Compilar y simular» lo ejecuta contra lo que hayas cableado en la protoboard.</li><li>El editor colorea el código como el IDE de Arduino, numera las líneas, sangra solo, y sugiere funciones, constantes, métodos de <code>Serial</code> y <code>lcd</code> y plantillas (<code>for</code>, <code>if</code>, <code>switch</code>…) mientras escribes. Ctrl+Espacio fuerza la lista, Tab o Enter aceptan, Ctrl+/ comenta líneas. El selector «Ejemplos» carga programas de partida (Blink, pulsador, semáforo, PWM, voltímetro, LCD, reloj, marcador…) adaptados a la placa elegida.</li><li>Soportado: variables, funciones, <code>if / for / while</code>, <code>millis()</code>, <code>delay()</code>, <code>pinMode / digitalWrite / digitalRead</code>, <code>analogRead / analogWrite</code>, <code>Serial</code>, <code>sprintf</code> y <code>LiquidCrystal</code> (pantalla virtual, no usa pines).</li><li>La división de enteros trunca como en C. No hay desbordamiento de 16 bits en el UNO ni I²C real.</li><li>El ESP32 funciona a 3,3 V: lo que conectes a más de 3,7 V en un pin es una avería, y se avisa.</li><li><code>INPUT_PULLUP</code> activa la resistencia interna: con el pulsador sin pulsar el pin lee 1.</li></ul>
 
   <h2 id="g7">7 · FPGA Alhambra II</h2>
   <ul><li>Dibuja la función con puertas. A cada interruptor, pulsador o LED asígnale un <b>pin de la placa</b> en Propiedades (SW1, SW2, LED0–LED7, D0–D7).</li><li>La placa virtual muestra los LED y deja pulsar los interruptores. Se generan el Verilog y el fichero de pines <code>.pcf</code> equivalentes a lo que harías en Icestudio.</li><li>Pines verificados con el <code>pinout.json</code> oficial de Icestudio para la Alhambra II: SW1 = 34, SW2 = 33, LED0–LED7 = 45, 44, 43, 42, 41, 39, 38, 37, D0–D7 = 2, 1, 4, 3, 8, 7, 10, 9, reloj 12 MHz = 49. Los pulsadores son de lógica positiva (1 al pulsar).</li></ul>
@@ -3398,7 +3464,7 @@ App.onBoard = function (k, a) {
 /* ---------- Arduino / ESP32: panel de programa en la protoboard ---------- */
 function buildMcuPage() {
   const m = $('#bmcu'); m.className = 'mcp';
-  m.innerHTML = `<div class="row"><label>Placa<select id="mcb"><option value="UNO">Arduino UNO</option><option value="ESP32">ESP32 DevKit</option></select></label><label>Ejemplos<select id="mcx"><option value="">— cargar ejemplo —</option>${Mcu.EXAMPLE_LIST.map(e => `<option value="${e.id}">${esc(e.title)}</option>`).join('')}</select></label></div>
+  m.innerHTML = `<div class="row"><label>Placa<select id="mcb"><option value="UNO">Arduino UNO</option><option value="ESP32">ESP32-S3 DevKitC-1</option></select></label><label>Ejemplos<select id="mcx"><option value="">— cargar ejemplo —</option>${Mcu.EXAMPLE_LIST.map(e => `<option value="${e.id}">${esc(e.title)}</option>`).join('')}</select></label></div>
     <div id="mced"></div>
     <div class="row"><button class="b prim" id="mcr" title="Compila el programa y lo ejecuta en la placa de la protoboard">▶ Compilar y simular</button><button class="b" id="mcs">❚❚ Detener</button><span id="mcst" class="mut"></span></div>
     <div class="ch">Monitor serie</div><pre id="mcsr" class="serial"></pre><div class="row"><button class="b sm" id="mcsc">Borrar</button></div>
@@ -3480,7 +3546,7 @@ function buildOverlays() {
     <p><b>Cables:</b> arrastra desde una patilla (esquema) o un agujero (protoboard) hasta otra. También vale pulsar una y luego la otra.</p>
     <p><b>Vista:</b> rueda = zoom; arrastra el fondo para desplazar. En la protoboard, pasa el ratón por un agujero para ver su tensión.</p>
     <p><b>Teclas:</b> Supr o Retroceso borra · Esc cancela · F1 guía de uso · Alt+1…5 cambia de pestaña.</p>
-    <p><b>Instrumentos:</b> el multímetro mide tensión o, en serie, corriente. La sonda lógica sigue los umbrales de su hoja (verde ≤ 1,6 V, rojo ≥ 3,3 V). El analizador usa sus umbrales (VIL 0,6 V, VIH 1,2 V).</p>
+    <p><b>Instrumentos:</b> el multímetro mide tensión o, en serie, corriente. La sonda lógica tiene tres indicadores: rojo (nivel alto, ≥ 2 V), verde (nivel bajo, ≤ 0,8 V) y ámbar (alta impedancia: nada fija el nodo, o tensión indefinida). El analizador usa sus umbrales (VIL 0,6 V, VIH 1,2 V).</p>
     <p><b>Realismo:</b> las entradas al aire, VCC sin conectar, un LED sin resistencia o un electrolítico invertido dan avisos y averías como en el taller. Puedes seguir simulando para ver las consecuencias.</p>
     <p><b>Límites:</b> simulación de paso fijo (10 µs–1 ms), sin retardos de propagación reales; el LCD no pasa por los pines.</p></div></div>`;
   document.querySelectorAll('.ov').forEach(o => o.addEventListener('click', (e) => { if (e.target.closest('[data-close]') || e.target === o) closeOv(); }));

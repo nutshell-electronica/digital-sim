@@ -467,6 +467,7 @@ function analyze(nl) {
         break; }
     }
   });
+  nl.deg = deg;
   nl.parts.forEach((p, pi) => { if (p.type === 'IC' && p.label !== undefined) {
     const d = IC[p.ic];
     if (d.vcc && (p.pins[d.vcc - 1] == null || p.pins[d.gnd - 1] == null)) w.push({ part: pi, msg: `${p.label || d.name}: VCC (pata ${d.vcc}) o GND (pata ${d.gnd}) sin conectar.` });

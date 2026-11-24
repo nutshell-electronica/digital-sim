@@ -74,7 +74,7 @@ class McuCtl {
   compile() {
     const tr = M.transpile(this.src); this.tr = tr; const me = this, UNO = this.board === 'UNO';
     const R = {
-      HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2, LED_BUILTIN: UNO ? 13 : 2, A0: 14, A1: 15, A2: 16, A3: 17, A4: 18, A5: 19, DEC: 10, HEX: 16, BIN: 2, OCT: 8, PI: Math.PI,
+      HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2, LED_BUILTIN: UNO ? 13 : 48, A0: 14, A1: 15, A2: 16, A3: 17, A4: 18, A5: 19, DEC: 10, HEX: 16, BIN: 2, OCT: 8, PI: Math.PI,
       pinMode: (p, m) => { me.pm[p] = m; delete me.pwm[p]; }, digitalWrite: (p, v) => { me.out[p] = v ? 1 : 0; delete me.pwm[p]; },
       digitalRead: (p) => me.inl[p] ? 1 : 0, analogRead: (p) => { const k = this.idxOf[p]; if (k === undefined || !me.sim) return 0; const v = me.sim.vp[me.part.pins[k]]; return Math.max(0, Math.min(UNO ? 1023 : 4095, Math.round(v / me.vdd * (UNO ? 1023 : 4095)))); },
       analogWrite: (p, v) => { me.pwm[p] = Math.max(0, Math.min(255, v)) / 255; me.pm[p] = 1; },
@@ -106,7 +106,7 @@ class McuCtl {
     const dr = new Array(this.names.length);
     for (const k in this.idxOf) { const i = this.idxOf[k], m = this.pm[k];
       if (m === 1) { let v = this.out[k] || 0; if (this.pwm[k] !== undefined) v = ((this.t * 490) % 1) < this.pwm[k] ? 1 : 0; dr[i] = v ? 1 : 2; } else if (m === 2) dr[i] = 3; }
-    this.ledL = (this.out[this.board === 'UNO' ? 13 : 2] || 0) && this.pm[this.board === 'UNO' ? 13 : 2] === 1;
+    this.ledL = (this.out[this.board === 'UNO' ? 13 : 48] || 0) && this.pm[this.board === 'UNO' ? 13 : 48] === 1;
     return dr;
   }
   checkPins(sim) {
@@ -190,7 +190,7 @@ void loop() {
 /* ---------- ejemplos precargados (UNO y ESP32) ---------- */
 const EXP = {
   UNO: { L: 8, L2: 9, L3: 10, B: 2, B2: 3, B3: 4, PWM: 9, AN: 'A0', LCD: '12, 11, 5, 4, A0, A1' },
-  ESP32: { L: 4, L2: 5, L3: 18, B: 14, B2: 27, B3: 26, PWM: 4, AN: 34, LCD: '21, 22, 5, 18, 19, 23' }
+  ESP32: { L: 4, L2: 5, L3: 6, B: 15, B2: 16, B3: 17, PWM: 4, AN: 1, LCD: '7, 8, 9, 10, 11, 12' }
 };
 M.EXAMPLE_LIST = [
   { id: 'blink', title: '1 · Parpadeo (Blink)', code: (p) => `// Parpadeo del LED de la placa y de un LED externo en el pin ${p.L}

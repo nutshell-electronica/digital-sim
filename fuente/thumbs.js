@@ -18,7 +18,7 @@ UI.HELP = {
   D7_b: 'Display de 7 segmentos 5161 (ánodo común) o 5163 (cátodo común). Cada segmento necesita su resistencia.', WIRE: 'Cable: arrastra de un agujero a otro. Pulsa en un punto del cable para crear un codo y arrástralo. Doble clic para cambiar el color.',
   IC: 'Circuito integrado DIP. Se monta a caballo del canal central, con la muesca a la izquierda (pata 1 abajo a la izquierda).', DMM: 'Multímetro: tensión (V), corriente (A, en serie) o resistencia (Ω, sin tensión en el circuito). Se cambia con doble clic.',
   LP: 'Sonda lógica en forma de lápiz: la punta se pincha en cualquier agujero. Las pinzas van a alimentación.', LA: 'Analizador lógico de 8 canales: solo se conectan los canales que vayas a usar, más masa.', MB102: 'Fuente MB102 para protoboard: jumpers de 3,3 V/5 V por cada carril y interruptor. Entrada por jack o USB.',
-  UNO: 'Arduino UNO (ATmega328P, 5 V). Sus pines se conectan a la placa con cables.', ESP32: 'ESP32 DevKit (3,3 V). No tolera 5 V en sus pines.'
+  UNO: 'Arduino UNO (ATmega328P, 5 V). Sus pines se conectan a la placa con cables.', ESP32: 'ESP32-S3 DevKitC-1 (3,3 V). No tolera 5 V en sus pines.'
 };
 const svgw = (inner) => `<svg class="th" viewBox="0 0 60 36" aria-hidden="true">${inner}</svg>`;
 const bandsFor = ['#8a5a2b', '#1F2421', '#B8432F'];

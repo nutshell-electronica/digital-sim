@@ -18,7 +18,7 @@ Al abrirlo, la pantalla de inicio muestra un contador de 4 bits animado con su a
 |---|---|---|
 | 1 · Tablas y Karnaugh | Logisim | Tabla de verdad, mapa de Karnaugh, simplificación y circuito |
 | 2 · Esquema lógico | SimulIDE | Puertas, biestables e integrados 74xx con su patillaje, cronograma, sonda y analizador |
-| 3 · Protoboard | Tinkercad | Protoboard de 830 puntos, fuente MB102, multímetro, sonda lógica, analizador de 8 canales y placas Arduino UNO / ESP32 con su programa |
+| 3 · Protoboard | Tinkercad | Protoboard de 830 puntos, fuente MB102, multímetro, sonda lógica, analizador de 8 canales y placas Arduino UNO / ESP32-S3 DevKitC-1 con su programa |
 | 4 · FPGA Alhambra II | Icestudio | Diseño con puertas, asignación de pines y placa virtual |
 | 5 · Informe | — | Informe de la práctica con tus capturas y medidas |
 
