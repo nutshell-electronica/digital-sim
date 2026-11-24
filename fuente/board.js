@@ -14,10 +14,10 @@ const rOfRow = (row) => { if (row === 'e' || row === 'f') return 5; return Math.
 const RAILY = { 'T+': 34, 'T-': 52, 'B-': 332, 'B+': 350 };
 B.hx = (col) => X0 + (col - 1) * P;
 const railX = (k) => X0 + 10 + k * P + Math.floor(k / 5) * 22;
-B.parseKey = (k) => { const a = k.split(':'); if (a[0] === 'h') { const m = a[1].match(/^(\d+)([a-j])$/); return { t: 'h', col: +m[1], row: m[2] }; } if (a[0] === 'r') return { t: 'r', rail: a[1], k: +a[2] }; if (a[0] === 's') return { t: 's', name: a.slice(1).join(':') }; return { t: 'i', name: a.slice(1).join(':') }; };
+B.parseKey = (k) => { const a = k.split(':'); if (a[0] === 'h') { const m = a[1].match(/^(\d+)([a-j])$/); return { t: 'h', col: +m[1], row: m[2] }; } if (a[0] === 'r') return { t: 'r', rail: a[1], k: +a[2] }; if (a[0] === 'f') return { t: 'f', x: +a[1], y: +a[2] }; if (a[0] === 's') return { t: 's', name: a.slice(1).join(':') }; return { t: 'i', name: a.slice(1).join(':') }; };
 B.netOf = (k) => { const p = B.parseKey(k); if (p.t === 'h') return 'M' + p.col + (p.row <= 'e' ? 'b' : 't'); if (p.t === 'r') return 'R:' + p.rail; return k; };
 const hole = (col, row) => 'h:' + col + row;
-const keyXY = (k, ctx) => { const p = B.parseKey(k); if (p.t === 'h') return { x: B.hx(p.col), y: ROWY[p.row] }; if (p.t === 'r') return { x: railX(p.k), y: RAILY[p.rail] }; if (ctx && ctx.sockets && ctx.sockets[k]) return ctx.sockets[k]; if (ctx && ctx.ipins && ctx.ipins[k]) return ctx.ipins[k]; return null; };
+const keyXY = (k, ctx) => { const p = B.parseKey(k); if (p.t === 'f') return { x: p.x, y: p.y }; if (p.t === 'h') return { x: B.hx(p.col), y: ROWY[p.row] }; if (p.t === 'r') return { x: railX(p.k), y: RAILY[p.rail] }; if (ctx && ctx.sockets && ctx.sockets[k]) return ctx.sockets[k]; if (ctx && ctx.ipins && ctx.ipins[k]) return ctx.ipins[k]; return null; };
 
 /* ---------- placas MCU (sockets) ---------- */
 B.BOARDS = {
@@ -181,6 +181,13 @@ B.Editor = class {
     for (const [r, y] of Object.entries(ROWY)) if (Math.abs(d.y - y) < 9) { const c = Math.round((d.x - X0) / P) + 1; if (c >= 1 && c <= COLS && Math.abs(d.x - B.hx(c)) < 10) return hole(c, r); }
     return null;
   }
+  /* extremo de una pieza de dos patas: agujero, carril o, fuera de la placa, posición libre (sin conectar) */
+  snapPx(d) {
+    const k = this.nearestKey(d); if (k && B.parseKey(k).t !== 's') return k;
+    if (d.x >= B.hx(1) - 14 && d.x <= B.hx(COLS) + 14 && d.y >= RAILY['T+'] - 14 && d.y <= RAILY['B+'] + 14) {
+      for (const r of ['T+', 'T-', 'B-', 'B+']) if (Math.abs(d.y - RAILY[r]) <= 12) { let bk = 0, bdd = 1e9; for (let q = 0; q < 50; q++) { const dd = Math.abs(d.x - railX(q)); if (dd < bdd) { bdd = dd; bk = q; } } return `r:${r}:${bk}`; }
+      return this.nearestHole(d); }
+    return `f:${Math.round(d.x)}:${Math.round(d.y)}`; }
   nearestHole(d) {
     const c = Math.max(1, Math.min(COLS, Math.round((d.x - X0) / P) + 1)); let br = 'e', bd = 1e9;
     for (const [r, y] of Object.entries(ROWY)) { const dd = Math.abs(d.y - y); if (dd < bd) { bd = dd; br = r; } }
@@ -299,7 +306,7 @@ B.Editor = class {
       if (e.shiftKey && it.type !== 'LA') { const ms = this.msel || new Set(this.sel && this.sel !== 'mcu' ? [this.sel] : []); ms.has(it.id) ? ms.delete(it.id) : ms.add(it.id); this.sel = null; this.setMsel(ms, this.mends); this.showProps(); this.dirty = true; return; }
       if (this.msel && this.msel.has(it.id)) { this.dr = { id: it.id, kind: 'gmove', moved: false, sx: e.clientX, sy: e.clientY, grab: this.nearestHole(p), origs: Object.fromEntries([...this.msel].map(i => [i, JSON.parse(JSON.stringify(this.board.items.find(x => x.id === i)))])) }; this.showProps(); this.dirty = true; return; }
       this.msel = null; this.mends = null; this.sel = it.id; this.showProps(); this.dirty = true;
-      this.dr = { id: it.id, kind: 'move', moved: false, sx: e.clientX, sy: e.clientY, grab: this.nearestHole(p), orig: JSON.parse(JSON.stringify(it)) }; return; }
+      this.dr = { id: it.id, kind: 'move', moved: false, sx: e.clientX, sy: e.clientY, gp: { x: p.x, y: p.y }, grab: this.nearestHole(p), orig: JSON.parse(JSON.stringify(it)) }; return; }
     if (hk && e.button === 0 && !e.shiftKey) { this.wc = { from: hk.dataset.k, moved: false, sx: e.clientX, sy: e.clientY }; this.pend = { pts: [hk.dataset.k] }; this.mouse = p; this.sel = null; this.showProps(); this.dirty = true; return; }
     if (!e.shiftKey) { this.sel = null; this.setMsel(null); } this.mq = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, sx: e.clientX, sy: e.clientY, add: e.shiftKey && this.msel ? new Set(this.msel) : null }; this.showProps(); this.dirty = true;
   }
@@ -324,11 +331,14 @@ B.Editor = class {
         else if (d.kind === 'bbody') { it.bpos = { x: Math.round(m.x - d.ox), y: Math.round(m.y - d.oy) }; }
         else if (d.kind === 'lach') { const k2 = this.nearestKey(m); if (d.idx === 'g') it.gnd = k2 || null; else it.ch[+d.idx] = k2 || null; }
         else if (d.kind === 'wp') { it.pts[d.idx] = nudge(m); }
+        else if (d.kind === 'end' && ['R', 'LED', 'C'].includes(it.type)) { it[d.end] = this.snapPx(m); }
         else if (d.kind === 'end') { const k2 = this.nearestKey(m); if (k2 && (it.type === 'WIRE' || it.type === 'DMM' || it.type === 'LP' || B.parseKey(k2).t !== 's')) it[d.end] = k2; }
         else { const cur = this.nearestHole(m), g = B.parseKey(d.grab), c = B.parseKey(cur), dc = c.col - g.col, dr = ROWS.indexOf(c.row) - ROWS.indexOf(g.row), o = d.orig;
           if (o.col !== undefined) { it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dc)); if (['IC', 'PUSH', 'DIPSW', 'CLK', 'D7'].includes(o.type)) it.r = Math.max(1, Math.min(9, (o.r === undefined ? 5 : o.r) + dr)); }
           else if (o.type === 'LP') { const k2 = this.nearestKey(m); if (k2) it.tip = k2; }
           else if (o.type === 'LA') { /* el analizador es fijo; se mueven sus clips con los tiradores */ }
+          else if (['R', 'LED', 'C'].includes(o.type) && d.gp) { const dxp = m.x - d.gp.x, dyp = m.y - d.gp.y, ks = ['a', 'b'].map(q => { const z = keyXY(o[q], this.ctx || this.geom()); return z ? this.snapPx({ x: z.x + dxp, y: z.y + dyp }) : o[q]; });
+            if (ks.every(k => B.parseKey(k).t === 'h') && ['a', 'b'].every(q => B.parseKey(o[q]).t === 'h')) { const nk = ['a', 'b'].map(q => this.shiftKey(o[q], dc, dr)); if (nk.every(Boolean)) { it.a = nk[0]; it.b = nk[1]; } else { it.a = ks[0]; it.b = ks[1]; } } else { it.a = ks[0]; it.b = ks[1]; } }
           else { const ends = o.type === 'DMM' ? ['red', 'black'] : o.type === 'LP' ? ['tip'] : ['a', 'b']; const nk = ends.map(q => this.shiftKey(o[q], dc, dr)); if (nk.every(Boolean)) ends.forEach((q, i) => it[q] = nk[i]); } }
         this.dirty = true; }
     }
@@ -344,7 +354,7 @@ B.Editor = class {
     if (this.wc) { const w = this.wc; this.wc = null; this.pend = null; if (!w.moved) { this.wf = { from: w.from, pts: [] }; this.hint('Cable: pica en zonas libres para crear codos y termina en un agujero. Esc cancela.'); } else if (!this.nearestKey(this.toDoc(e))) { this.wf = { from: w.from, pts: [nudge(this.toDoc(e))] }; this.hint('Codo añadido. Sigue picando y termina en un agujero. Esc cancela.'); } if (w.moved) { const k2 = this.nearestKey(this.toDoc(e)); if (k2 && k2 !== w.from) { const b = this.board; b.items.push({ id: 'b' + b.nid++, type: 'WIRE', a: w.from, b: k2, color: this.autoColor(w.from, k2) }); this.sel = 'b' + (b.nid - 1); this.changed(); } } this.dirty = true; }
     if (this.pressed) { const it = this.pressed; this.pressed = null; const ix = this.refs[it.id]; if (this.sim.parts[ix]) this.sim.parts[ix].closed = false; this.dirty = true; }
   }
-  keyLabel(k) { const p = B.parseKey(k); if (p.t === 'h') return `columna ${p.col}, fila ${p.row.toUpperCase()}`; if (p.t === 'r') return `carril ${p.rail.replace('-', '−')}`; if (p.t === 's') return p.name; return k; }
+  keyLabel(k) { const p = B.parseKey(k); if (p.t === 'h') return `columna ${p.col}, fila ${p.row.toUpperCase()}`; if (p.t === 'r') return `carril ${p.rail.replace('-', '−')}`; if (p.t === 's') return p.name; if (p.t === 'f') return 'fuera de la placa (sin conectar)'; return k; }
   place(k) {
     const [ty, arg] = this.tool.split(':'), pd = this.pend, p = B.parseKey(k), b = this.board;
     const add = (o) => { o.id = 'b' + b.nid++; b.items.push(o); this.sel = o.id; return o; };
