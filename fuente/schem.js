@@ -129,9 +129,9 @@ const routeOf = (doc, w) => { const a = pinPos(doc, w.a.p, w.a.n), b = pinPos(do
   if (b.x >= a.x + 10) { const mx = Math.round((a.x + b.x) / 20) * 10; return [a, { x: mx, y: a.y }, { x: mx, y: b.y }, b]; }
   const my = Math.round((a.y + b.y) / 20) * 10; return [a, { x: a.x + 14, y: a.y }, { x: a.x + 14, y: my }, { x: b.x - 14, y: my }, { x: b.x - 14, y: b.y }, b]; };
 /* ruta ortogonal por los puntos dados: tramos rectos y, si dos puntos no están alineados, un codo; el último tramo entra en la patilla en horizontal */
-const orthoPath = (P, endPin) => { const o = [{ x: P[0].x, y: P[0].y }];
-  for (let i = 1; i < P.length; i++) { const u = o[o.length - 1], v = P[i], prev = o.length > 1 ? o[o.length - 2] : null, prevHor = prev ? prev.y === u.y : false;
-    if (u.x !== v.x && u.y !== v.y) { const last = endPin && i === P.length - 1; o.push(last ? { x: u.x, y: v.y } : prevHor ? { x: u.x, y: v.y } : { x: v.x, y: u.y }); }
+const orthoPath = (P) => { const o = [{ x: P[0].x, y: P[0].y }];
+  for (let i = 1; i < P.length; i++) { const u = o[o.length - 1], v = P[i], prev = o.length > 1 ? o[o.length - 2] : null;
+    if (u.x !== v.x && u.y !== v.y) { const hor = prev ? prev.y === u.y : Math.abs(v.x - u.x) >= Math.abs(v.y - u.y); o.push(hor ? { x: v.x, y: u.y } : { x: u.x, y: v.y }); }
     o.push({ x: v.x, y: v.y }); }
   return cleanPts(o); };
 const ptsD = (P) => P.map((q, i) => (i ? 'L' : 'M') + q.x + ',' + q.y).join(' ');
@@ -202,7 +202,7 @@ S.Editor = class {
     if (window.ResizeObserver) new ResizeObserver(() => { this.dirty = true; }).observe(this.svg);
     this.timing = new Timing(r.querySelector('#tc'), { span: 0.02 });
     const groups = {}; Object.entries(KIND).filter(([id, k]) => !k.hidden && (!this.fpga || !(/^IC:/.test(id) || ['R', 'C', 'VM', 'D7'].includes(id)))).forEach(([id, k]) => (groups[k.group] = groups[k.group] || []).push(id));
-    const order = ['Entradas', 'Salidas', 'Pasivos', 'Puertas', 'Biestables', 'Integrados', 'Alimentación', 'Instrumentos'];
+    const order = ['Alimentación', 'Entradas', 'Salidas', 'Pasivos', 'Puertas', 'Biestables', 'Integrados', 'Instrumentos'];
     this.palEl.innerHTML = order.filter(g => groups[g]).map(g => `<details ${['Entradas', 'Salidas', 'Puertas', 'Instrumentos'].includes(g) ? 'open' : ''}><summary>${g}</summary>${groups[g].map(id => `<button class="pi" draggable="true" data-k="${id}" title="${esc(KIND[id].desc || UI.HELP[id] || KIND[id].name)}">${UI.schThumb(KIND[id], id)}<span>${esc(KIND[id].name)}</span></button>`).join('')}</details>`).join('');
     this.palEl.addEventListener('click', e => { const b = e.target.closest('.pi'); if (!b) return; this.tool = b.dataset.k; this.pend = null; this.palEl.querySelectorAll('.pi').forEach(x => x.classList.toggle('on', x === b)); this.hint('Haz clic en el lienzo para colocar «' + KIND[this.tool].name + '». Esc cancela.'); });
     this.palEl.addEventListener('dragstart', e => { const b = e.target.closest('.pi'); if (!b) return; e.dataTransfer.setData('text/plain', 'sch:' + b.dataset.k); e.dataTransfer.effectAllowed = 'copy'; this.tool = null; this.dragKind = b.dataset.k; this.dropDone = false; this.dragIn = false; this.lastDrag = null; const th = b.querySelector('svg'); if (th && e.dataTransfer.setDragImage) e.dataTransfer.setDragImage(th, 20, 20); });
@@ -227,6 +227,8 @@ S.Editor = class {
       if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.altKey && this.sel && !this.sel.startsWith('W:')) { this.rotateSel(); e.preventDefault(); }
       if ((e.key === 'Delete' || e.key === 'Backspace') && (this.sel || this.msel)) { this.deleteSel(); e.preventDefault(); } });
   }
+  finishWire(part, n) { const pd = this.pend, w = this.doc.wire(this.doc.part(pd.p), pd.n, part, n);
+    const P = orthoPath([pinPos(this.doc, pd.p, pd.n), ...(pd.pts || []), pinPos(this.doc, part.id, n)]).slice(1, -1); if (P.length) w.pts = P; else if ((pd.pts || []).length) w.pts = []; this.pend = null; this.changed(); return w; }
   copySel() {
     const ids = this.msel ? new Set(this.msel) : (this.sel && !this.sel.startsWith('W:') && this.doc.part(this.sel) ? new Set([this.sel]) : null); if (!ids || !ids.size) return false;
     const cl = (o) => JSON.parse(JSON.stringify(o));
@@ -266,14 +268,16 @@ S.Editor = class {
       const ref = { p: pin.dataset.p, n: pin.dataset.n };
       this.pinDown = { x: e.clientX, y: e.clientY, moved: false };
       if (!this.pend) { this.pend = { p: ref.p, n: ref.n, pts: [] }; this.hint('Pica en zonas libres para poner codos y termina en otra patilla. También puedes arrastrar directamente a otra patilla. Esc cancela.'); } else {
-        if (this.pend.p !== ref.p || this.pend.n !== ref.n) { const w = this.doc.wire(this.doc.part(this.pend.p), this.pend.n, this.doc.part(ref.p), ref.n);
-          if (this.pend.pts && this.pend.pts.length) { const P = orthoPath([pinPos(this.doc, this.pend.p, this.pend.n), ...this.pend.pts, pinPos(this.doc, ref.p, ref.n)], true); w.pts = P.slice(1, -1); } this.changed(); }
+        if (this.pend.p !== ref.p || this.pend.n !== ref.n) { this.finishWire(this.doc.part(ref.p), ref.n); }
+
         this.pend = null; this.hint('Cable creado.'); }
       this.dirty = true; return; }
     const sg = t.closest && t.closest('.seg');
     if (sg) { const w = this.doc.wires.find(x => x.id === sg.dataset.w); if (w) { if (!w.pts) w.pts = routeOf(this.doc, w).slice(1, -1); let k = +sg.dataset.k; if (k === 0) { w.pts.unshift({ x: pinPos(this.doc, w.a.p, w.a.n).x, y: pinPos(this.doc, w.a.p, w.a.n).y }); k = 1; } if (k === w.pts.length) { const b = pinPos(this.doc, w.b.p, w.b.n); w.pts.push({ x: b.x, y: b.y }); }
         const P = [pinPos(this.doc, w.a.p, w.a.n), ...w.pts, pinPos(this.doc, w.b.p, w.b.n)], p0 = P[k], p1 = P[k + 1]; this.segDrag = { w, i0: k - 1, i1: k, axis: Math.abs(p0.y - p1.y) < 1 ? 'h' : Math.abs(p0.x - p1.x) < 1 ? 'v' : 'f', s0: { x: p0.x, y: p0.y }, s1: { x: p1.x, y: p1.y }, from: p }; return; } }
-    const wl = t.closest && t.closest('.wire'); if (wl) { this.sel = 'W:' + wl.dataset.w; this.pend = null; this.wireDown = { id: wl.dataset.w, x: e.clientX, y: e.clientY, p }; this.showProps(); this.dirty = true; return; }
+    const wl = t.closest && t.closest('.wire');
+    if (wl && this.pend) { const jn = this.junctionOn(wl.dataset.w, p); if (jn && jn.id !== this.pend.p) { this.finishWire(jn, 'P'); this.hint('Nudo creado.'); } return; }
+    if (wl) { this.sel = 'W:' + wl.dataset.w; this.pend = null; this.wireDown = { id: wl.dataset.w, x: e.clientX, y: e.clientY, p }; this.showProps(); this.dirty = true; return; }
     const pg = t.closest && t.closest('.part');
     if (pg) {
       const part = this.doc.part(pg.dataset.id); this.pend = null;
@@ -325,8 +329,8 @@ S.Editor = class {
       this.showProps(); this.dirty = true; }
     if (this.segDrag) { const w = this.segDrag.w; this.segDrag = null; const P = cleanPts([pinPos(this.doc, w.a.p, w.a.n), ...w.pts, pinPos(this.doc, w.b.p, w.b.n)]); w.pts = P.slice(1, -1); if (!w.pts.length) delete w.pts; this.changed(); return; }
     if (this.pinDown) { const pd = this.pinDown; this.pinDown = null; const tp = this.pinAt(e);
-      if (pd.moved && this.pend && tp && (this.pend.p !== tp.dataset.p || this.pend.n !== tp.dataset.n)) { { const w = this.doc.wire(this.doc.part(this.pend.p), this.pend.n, this.doc.part(tp.dataset.p), tp.dataset.n); if (this.pend.pts && this.pend.pts.length) w.pts = orthoPath([pinPos(this.doc, this.pend.p, this.pend.n), ...this.pend.pts, pinPos(this.doc, tp.dataset.p, tp.dataset.n)], true).slice(1, -1); } this.pend = null; this.hint('Cable creado.'); this.changed(); }
-      else if (pd.moved && this.pend && !tp) { const hw = document.elementsFromPoint(e.clientX, e.clientY).find(x => x.classList && x.classList.contains('wire')); if (hw) { const jn = this.junctionOn(hw.dataset.w, this.toDoc(e)); if (jn && !(jn.id === this.pend.p)) { this.doc.wire(this.doc.part(this.pend.p), this.pend.n, jn, 'P'); this.hint('Nudo creado.'); this.changed(); } } this.pend = null; this.dirty = true; }
+      if (pd.moved && this.pend && tp && (this.pend.p !== tp.dataset.p || this.pend.n !== tp.dataset.n)) { this.finishWire(this.doc.part(tp.dataset.p), tp.dataset.n); this.hint('Cable creado.'); }
+      else if (pd.moved && this.pend && !tp) { const hw = document.elementsFromPoint(e.clientX, e.clientY).find(x => x.classList && x.classList.contains('wire')); if (hw) { const jn = this.junctionOn(hw.dataset.w, this.toDoc(e)); if (jn && !(jn.id === this.pend.p)) { this.finishWire(jn, 'P'); this.hint('Nudo creado.'); } } this.pend = null; this.dirty = true; }
       else if (pd.moved) { this.pend = null; this.dirty = true; } }
     if (this.drag && this.drag.group) { if (this.drag.moved) this.changed(); this.drag = null; this.dirty = true; }
     if (this.drag) {

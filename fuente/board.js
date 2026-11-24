@@ -127,7 +127,7 @@ B.Editor = class {
     const sv = this.svg;
     sv.addEventListener('mousedown', e => this.md(e)); window.addEventListener('mousemove', e => this.mm(e)); window.addEventListener('mouseup', e => this.mu(e));
     sv.addEventListener('wheel', e => { e.preventDefault(); const p = this.toDoc(e), f = e.deltaY > 0 ? 1.1 : 0.9; this.view.x = p.x - (p.x - this.view.x) * f; this.view.y = p.y - (p.y - this.view.y) * f; this.view.k *= f; this.dirty = true; }, { passive: false });
-    window.addEventListener('keydown', e => { if (!this.root.offsetParent || e.target.matches('input,select,textarea')) return; if (e.key === 'Escape') { this.setMsel(null); this.mq = null; this.cancelTool(); this.wf = null; this.dirty = true; UI.closePop(); } if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey && this.sel) { this.rotateSel(); e.preventDefault(); } if ((e.key === 'Delete' || e.key === 'Backspace') && (this.sel || this.msel)) { this.removeSel(); e.preventDefault(); } });
+    window.addEventListener('keydown', e => { if (!this.root.offsetParent || e.target.matches('input,select,textarea')) return; if (e.key === 'Escape') { this.setMsel(null); this.mq = null; this.cancelTool(); this.wf = null; this.dirty = true; UI.closePop(); } if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey && this.sel) { this.rotateSel(); e.preventDefault(); } if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) { if (this.copySel()) e.preventDefault(); } if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) { if (this.pasteClip()) e.preventDefault(); } if ((e.ctrlKey || e.metaKey) && (e.key === 'x' || e.key === 'X')) { if (this.copySel()) { this.removeSel(); e.preventDefault(); } } if ((e.key === 'Delete' || e.key === 'Backspace') && (this.sel || this.msel)) { this.removeSel(); e.preventDefault(); } });
   }
   buildPalette() {
     const el = this.root.querySelector('#bpal'), ics = Object.values(DSim.IC).filter(d => d.fam !== 'ID' || d.analog === '555');
@@ -209,6 +209,23 @@ B.Editor = class {
     ks.forEach(k => { if (o.type === 'WIRE' && !ends[k]) return; if (B.parseKey(o[k]).t !== 'h') return; const nk = this.shiftKey(o[k], dc, dr); if (!nk) bad = true; else n[k] = nk; });
     if (bad) return null; if (o.type === 'WIRE' && o.pts) { if (ends.a && ends.b) n.pts = o.pts.map(p => ({ x: p.x + dx, y: p.y + dy })); else delete n.pts; }
     return n;
+  }
+  copySel() {
+    const ids = this.msel && this.msel.size ? new Set(this.msel) : (this.sel && this.sel !== 'mcu' ? new Set([this.sel]) : null); if (!ids) return false;
+    const items = this.board.items.filter(i => ids.has(i.id) && i.type !== 'LA').map(i => JSON.parse(JSON.stringify(i))); if (!items.length) return false;
+    this.clip = { items, ends: Object.assign({}, this.mends || {}), n: 0 }; this.hint(items.length + (items.length === 1 ? ' elemento copiado.' : ' elementos copiados.') + ' Ctrl+V para pegar.'); return true;
+  }
+  pasteClip() {
+    const c = this.clip; if (!c || !c.items.length) return false; c.n++;
+    let c0 = 99, c1 = 0; const ext = (k) => { if (!k) return; const p = B.parseKey(k); if (p.t === 'h') { c0 = Math.min(c0, p.col); c1 = Math.max(c1, p.col); } };
+    c.items.forEach(i => { if (i.col !== undefined) { c0 = Math.min(c0, i.col); c1 = Math.max(c1, i.col + this.colSpan(i) - 1); } ['a', 'b', 'tip', 'red', 'black'].forEach(q => ext(i[q])); });
+    const w = Math.max(1, c1 - c0 + 1), cand = []; for (let k = c.n; k <= c.n + 6; k++) { cand.push((w + 1) * k, -(w + 1) * k); } for (let d = 1; d < COLS; d++) cand.push(d, -d);
+    let res = null, dxx = 0;
+    for (const dc of cand) { const out = []; let ok = true; for (const o of c.items) { const n = this.shiftItem(o, dc, 0, c.ends[o.id] || { a: 1, b: 1 }, B.hx(c0 + dc) - B.hx(c0), 0); if (!n) { ok = false; break; } out.push(n); } if (ok) { res = out; dxx = dc; break; } }
+    if (!res) { this.hint('No cabe la copia en la placa.'); return true; }
+    const b = this.board, ids = new Set(), ends = {}; res.forEach(n => { n.id = 'b' + b.nid++; b.items.push(n); ids.add(n.id); ends[n.id] = { a: 1, b: 1 }; });
+    this.sel = null; this.setMsel(ids.size > 1 ? ids : null, ends); if (ids.size === 1) this.sel = [...ids][0];
+    this.hint(ids.size + (ids.size === 1 ? ' elemento pegado' : ' elementos pegados') + ' y seleccionados: arrástralos a su sitio (cuidado: si caen sobre agujeros ocupados se unen).'); this.changed(); return true;
   }
   shiftKey(k, dc, dr) { const p = B.parseKey(k); if (p.t !== 'h') return null; const c = p.col + dc, ri = ROWS.indexOf(p.row) + dr; if (c < 1 || c > COLS || ri < 0 || ri >= ROWS.length) return null; return hole(c, ROWS[ri]); }
   colSpan(it) { return it.type === 'IC' ? DSim.IC[it.ic].n / 2 : (it.type === 'PUSH' || it.type === 'CLK') ? (it.type === 'CLK' ? 3 : 2) : it.type === 'DIPSW' ? (it.n || 8) : it.type === 'D7' ? 5 : 1; }
