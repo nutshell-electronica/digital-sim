@@ -179,7 +179,7 @@ S.Editor = class {
       <button class="b" data-a="tt">Tabla de verdad</button><button class="b" data-a="fit">Ajustar vista</button><button class="b" data-a="clear">Vaciar</button><button class="b" data-a="png">Captura</button>
     </div>
     <div class="cv"><svg id="sv" xmlns="${NS}"></svg><div class="hint" id="hint">Arrastra componentes del catálogo al lienzo. Arrastra de una patilla a otra para cablear. Doble clic en un componente para editar sus valores. Rueda: zoom.</div></div>
-    <div class="tpanel"><canvas id="tc"></canvas><div class="tp-b"><button class="b sm" data-a="tfollow">Seguir</button><button class="b sm" data-a="tcur">Quitar cursores</button><button class="b sm" data-a="tanalog">Analógico</button><span class="mut">Rueda: zoom · clic: cursor A · Mayús+clic: cursor B</span></div></div></div>
+    <div class="tpanel"><canvas id="tc"></canvas><div class="tp-b"><button class="b sm" data-a="tfollow">Seguir</button><button class="b sm" data-a="tcur" data-cur="0">Cursor A</button><button class="b sm" data-a="tcur" data-cur="1">Cursor B</button><button class="b sm" data-a="tanalog">Analógico</button><span class="mut">Rueda: zoom · clic: cursor A · Mayús+clic: cursor B</span></div></div></div>
     <div class="ed-right"><div class="pal-h">Propiedades</div><div id="props" class="props"></div><div id="warns" class="warns"></div></div>`;
     this.svg = r.querySelector('#sv'); this.palEl = r.querySelector('#pal'); this.propsEl = r.querySelector('#props');
     if (window.ResizeObserver) new ResizeObserver(() => { this.dirty = true; }).observe(this.svg);
@@ -215,7 +215,7 @@ S.Editor = class {
     else if (a === 'reset') this.recompile();
     else if (a === 'clear') { if (confirm('¿Vaciar el esquema?')) { this.doc = new Doc(); this.sel = null; this.recompile(); } }
     else if (a === 'tfollow') { this.timing.follow = true; }
-    else if (a === 'tcur') this.timing.clearCursors();
+    else if (a === 'tcur') this.timing.toggleCursor(+el.dataset.cur);
     else if (a === 'tanalog') { this.timing.analog = !this.timing.analog; el.classList.toggle('on', this.timing.analog); }
     else if (a === 'tt') { const t = this.truthTable(); if (t) { this.lastTT = t; this.onChange && this.onChange('tt', t); } }
     else if (a === 'fit') this.fit();

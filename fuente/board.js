@@ -108,7 +108,7 @@ B.Editor = class {
       <button class="b" data-a="auto" title="Ajusta velocidad, paso y ventana del analizador al reloj del circuito, para que la señal cruce la pantalla en unos 6 s">Autoajuste</button>
       <span class="sp"></span><span class="tstat" id="btstat">t = 0</span><button class="b" data-a="fit">Ajustar vista</button><button class="b" data-a="png">Captura</button><button class="b" data-a="clear">Vaciar</button></div>
     <div class="cv"><svg id="bsv" xmlns="${NS}"></svg><div class="hint" id="bhint">Arrastra piezas del catálogo a la placa. Arrastra de un agujero a otro para tender un cable. Doble clic en una pieza para editar su valor. Rueda: zoom.</div><div class="tip" id="btip"></div></div>
-    <div class="tpanel"><canvas id="btc"></canvas><div class="tp-b"><button class="b sm" data-a="tfollow">Seguir</button><button class="b sm" data-a="tcur">Quitar cursores</button><button class="b sm" data-a="tanalog">Analógico</button><span id="laMeas" class="mut">Analizador lógico: pon pinzas en los agujeros (8 canales). Rueda: zoom.</span></div></div></div>
+    <div class="tpanel"><canvas id="btc"></canvas><div class="tp-b"><button class="b sm" data-a="tfollow">Seguir</button><button class="b sm" data-a="tcur" data-cur="0">Cursor A</button><button class="b sm" data-a="tcur" data-cur="1">Cursor B</button><button class="b sm" data-a="tanalog">Analógico</button><span id="laMeas" class="mut">Analizador lógico: pon pinzas en los agujeros (8 canales). Rueda: zoom.</span></div></div></div>
     <div class="ed-right"><div class="pal-h" id="bph">Banco</div><div id="bmcu" hidden></div><div id="bprops" class="props"></div><div id="bwarns" class="warns"></div></div>`;
     this.svg = r.querySelector('#bsv'); this.timing = new Timing(r.querySelector('#btc'), { span: 0.02, th: [0.6, 1.2] });
     if (window.ResizeObserver) new ResizeObserver(() => { this.dirty = true; }).observe(this.svg);
@@ -158,7 +158,7 @@ B.Editor = class {
     if (a === 'run') { this.running = !this.running; el.textContent = this.running ? '❚❚ Pausar' : '▶ Simular'; }
     else if (a === 'reset') this.recompile();
     else if (a === 'clear') { if (confirm('¿Vaciar la protoboard?')) { const m = this.board.mcu, mb = this.board.mb; this.board = B.newBoard(); this.board.mcu = m; this.board.mb = mb; this.sel = null; this.changed(); } }
-    else if (a === 'tfollow') this.timing.follow = true; else if (a === 'tcur') this.timing.clearCursors();
+    else if (a === 'tfollow') this.timing.follow = true; else if (a === 'tcur') this.timing.toggleCursor(+el.dataset.cur);
     else if (a === 'tanalog') { this.timing.analog = !this.timing.analog; el.classList.toggle('on', this.timing.analog); }
     else if (a === 'png') this.onChange && this.onChange('capture', this.svgToImg());
     else if (a === 'logm') this.logMeasure();

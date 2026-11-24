@@ -7,17 +7,23 @@ class Timing {
   constructor(canvas, o = {}) {
     this.c = canvas; this.ctx = canvas.getContext('2d'); this.ch = []; this.span = o.span || 0.05; this.follow = true; this.tEnd = 0;
     this.th = o.th || [1.5, 3.5]; this.rowH = o.rowH || 38; this.curs = [null, null]; this.analog = false; this.labelW = 96;
-    canvas.addEventListener('mousedown', (e) => this.click(e));
+    canvas.addEventListener('mousedown', (e) => this.click(e)); canvas.addEventListener('mousemove', (e) => this.hover(e));
     canvas.addEventListener('wheel', (e) => { e.preventDefault(); const f = e.deltaY > 0 ? 1.25 : 0.8; this.span = Math.min(60, Math.max(1e-6, this.span * f)); this.draw(); }, { passive: false });
   }
   setChannels(ch) { this.ch = ch; }
+  pos(e) { const r = this.c.getBoundingClientRect(), x = (e.clientX - r.left) * (this.c.width / r.width) / (this.dpr || 1); const W = this.c.width / (this.dpr || 1) - this.labelW - 8; return { x, W, t: this.t0 + (x - this.labelW) / W * this.span }; }
+  near(p) { let b = -1, bd = 7; this.curs.forEach((c, k) => { if (c === null) return; const d = Math.abs(this.labelW + (c - this.t0) / this.span * p.W - p.x); if (d <= bd) { bd = d; b = k; } }); return b; }
   click(e) {
-    const r = this.c.getBoundingClientRect(), x = (e.clientX - r.left) * (this.c.width / r.width) / (this.dpr || 1);
-    const W = this.c.width / (this.dpr || 1) - this.labelW - 8; if (x < this.labelW) return;
-    const t = this.t0 + (x - this.labelW) / W * this.span;
-    if (e.shiftKey || this.curs[0] !== null && this.curs[1] === null) this.curs[1] = t; else { this.curs[0] = t; this.curs[1] = null; }
-    this.draw();
+    const p = this.pos(e); if (p.x < this.labelW) return;
+    let k = this.near(p);
+    if (k < 0) { k = this.curs.findIndex(c => c === null); if (k < 0) return; this.curs[k] = p.t; }
+    this.drag = k; this.follow = false; this.draw();
+    const mv = (ev) => { if (this.drag == null) return; const q = this.pos(ev); this.curs[this.drag] = q.t; this.draw(); };
+    const up = () => { this.drag = null; window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
   }
+  hover(e) { if (this.drag != null) return; const p = this.pos(e); this.c.style.cursor = p.x >= this.labelW && this.near(p) >= 0 ? 'ew-resize' : ''; }
+  toggleCursor(k) { if (this.curs[k] !== null) this.curs[k] = null; else this.curs[k] = this.t0 + this.span * (k ? 0.6 : 0.4); this.draw(); }
   clearCursors() { this.curs = [null, null]; this.draw(); }
   level(w, i) { return w.v[i] >= this.th[1] ? 1 : w.v[i] <= this.th[0] ? 0 : (i > 0 ? this.level(w, i - 1) : 0); }
   draw() {
@@ -70,13 +76,13 @@ class Timing {
       g.lineTo(x0 + W, cur ? yh : yl); g.stroke();
     });
     // cursores
-    const cc = this.curs.filter(t => t !== null);
-    cc.forEach((t, i) => { const x = x0 + (t - t0) / this.span * W; g.strokeStyle = '#B85D34'; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(x, 14); g.lineTo(x, chh); g.stroke(); g.setLineDash([]); g.fillStyle = '#B85D34'; g.fillText(i ? 'B' : 'A', x + 3, chh - 8); });
+    this.curs.forEach((t, i) => { if (t === null) return; const x = x0 + (t - t0) / this.span * W; g.strokeStyle = '#B85D34'; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(x, 14); g.lineTo(x, chh); g.stroke(); g.setLineDash([]); g.fillStyle = '#B85D34'; g.fillText(i ? 'B' : 'A', x + 3, chh - 8); });
     if (this.curs[0] !== null && this.curs[1] !== null) {
       const d = Math.abs(this.curs[1] - this.curs[0]); const txt = `Δt = ${fmtT(d)}  ·  1/Δt = ${d > 0 ? fmtF(1 / d) : '—'}`;
       g.font = 'bold 12px Arial'; g.fillStyle = '#B85D34'; g.fillText(txt, x0 + 8, chh - 8);
     }
     this.meas = null;
+    const pb = c.parentElement; if (pb) pb.querySelectorAll('[data-cur]').forEach(b => b.classList.toggle('on', this.curs[+b.dataset.cur] !== null));
   }
   /* medidas automáticas del canal k sobre la ventana: periodo, frecuencia, ciclo de trabajo */
   measure(k) {

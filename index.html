@@ -800,17 +800,23 @@ class Timing {
   constructor(canvas, o = {}) {
     this.c = canvas; this.ctx = canvas.getContext('2d'); this.ch = []; this.span = o.span || 0.05; this.follow = true; this.tEnd = 0;
     this.th = o.th || [1.5, 3.5]; this.rowH = o.rowH || 38; this.curs = [null, null]; this.analog = false; this.labelW = 96;
-    canvas.addEventListener('mousedown', (e) => this.click(e));
+    canvas.addEventListener('mousedown', (e) => this.click(e)); canvas.addEventListener('mousemove', (e) => this.hover(e));
     canvas.addEventListener('wheel', (e) => { e.preventDefault(); const f = e.deltaY > 0 ? 1.25 : 0.8; this.span = Math.min(60, Math.max(1e-6, this.span * f)); this.draw(); }, { passive: false });
   }
   setChannels(ch) { this.ch = ch; }
+  pos(e) { const r = this.c.getBoundingClientRect(), x = (e.clientX - r.left) * (this.c.width / r.width) / (this.dpr || 1); const W = this.c.width / (this.dpr || 1) - this.labelW - 8; return { x, W, t: this.t0 + (x - this.labelW) / W * this.span }; }
+  near(p) { let b = -1, bd = 7; this.curs.forEach((c, k) => { if (c === null) return; const d = Math.abs(this.labelW + (c - this.t0) / this.span * p.W - p.x); if (d <= bd) { bd = d; b = k; } }); return b; }
   click(e) {
-    const r = this.c.getBoundingClientRect(), x = (e.clientX - r.left) * (this.c.width / r.width) / (this.dpr || 1);
-    const W = this.c.width / (this.dpr || 1) - this.labelW - 8; if (x < this.labelW) return;
-    const t = this.t0 + (x - this.labelW) / W * this.span;
-    if (e.shiftKey || this.curs[0] !== null && this.curs[1] === null) this.curs[1] = t; else { this.curs[0] = t; this.curs[1] = null; }
-    this.draw();
+    const p = this.pos(e); if (p.x < this.labelW) return;
+    let k = this.near(p);
+    if (k < 0) { k = this.curs.findIndex(c => c === null); if (k < 0) return; this.curs[k] = p.t; }
+    this.drag = k; this.follow = false; this.draw();
+    const mv = (ev) => { if (this.drag == null) return; const q = this.pos(ev); this.curs[this.drag] = q.t; this.draw(); };
+    const up = () => { this.drag = null; window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
   }
+  hover(e) { if (this.drag != null) return; const p = this.pos(e); this.c.style.cursor = p.x >= this.labelW && this.near(p) >= 0 ? 'ew-resize' : ''; }
+  toggleCursor(k) { if (this.curs[k] !== null) this.curs[k] = null; else this.curs[k] = this.t0 + this.span * (k ? 0.6 : 0.4); this.draw(); }
   clearCursors() { this.curs = [null, null]; this.draw(); }
   level(w, i) { return w.v[i] >= this.th[1] ? 1 : w.v[i] <= this.th[0] ? 0 : (i > 0 ? this.level(w, i - 1) : 0); }
   draw() {
@@ -863,13 +869,13 @@ class Timing {
       g.lineTo(x0 + W, cur ? yh : yl); g.stroke();
     });
     // cursores
-    const cc = this.curs.filter(t => t !== null);
-    cc.forEach((t, i) => { const x = x0 + (t - t0) / this.span * W; g.strokeStyle = '#B85D34'; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(x, 14); g.lineTo(x, chh); g.stroke(); g.setLineDash([]); g.fillStyle = '#B85D34'; g.fillText(i ? 'B' : 'A', x + 3, chh - 8); });
+    this.curs.forEach((t, i) => { if (t === null) return; const x = x0 + (t - t0) / this.span * W; g.strokeStyle = '#B85D34'; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(x, 14); g.lineTo(x, chh); g.stroke(); g.setLineDash([]); g.fillStyle = '#B85D34'; g.fillText(i ? 'B' : 'A', x + 3, chh - 8); });
     if (this.curs[0] !== null && this.curs[1] !== null) {
       const d = Math.abs(this.curs[1] - this.curs[0]); const txt = `Δt = ${fmtT(d)}  ·  1/Δt = ${d > 0 ? fmtF(1 / d) : '—'}`;
       g.font = 'bold 12px Arial'; g.fillStyle = '#B85D34'; g.fillText(txt, x0 + 8, chh - 8);
     }
     this.meas = null;
+    const pb = c.parentElement; if (pb) pb.querySelectorAll('[data-cur]').forEach(b => b.classList.toggle('on', this.curs[+b.dataset.cur] !== null));
   }
   /* medidas automáticas del canal k sobre la ventana: periodo, frecuencia, ciclo de trabajo */
   measure(k) {
@@ -1185,7 +1191,7 @@ S.Editor = class {
       <button class="b" data-a="tt">Tabla de verdad</button><button class="b" data-a="fit">Ajustar vista</button><button class="b" data-a="clear">Vaciar</button><button class="b" data-a="png">Captura</button>
     </div>
     <div class="cv"><svg id="sv" xmlns="${NS}"></svg><div class="hint" id="hint">Arrastra componentes del catálogo al lienzo. Arrastra de una patilla a otra para cablear. Doble clic en un componente para editar sus valores. Rueda: zoom.</div></div>
-    <div class="tpanel"><canvas id="tc"></canvas><div class="tp-b"><button class="b sm" data-a="tfollow">Seguir</button><button class="b sm" data-a="tcur">Quitar cursores</button><button class="b sm" data-a="tanalog">Analógico</button><span class="mut">Rueda: zoom · clic: cursor A · Mayús+clic: cursor B</span></div></div></div>
+    <div class="tpanel"><canvas id="tc"></canvas><div class="tp-b"><button class="b sm" data-a="tfollow">Seguir</button><button class="b sm" data-a="tcur" data-cur="0">Cursor A</button><button class="b sm" data-a="tcur" data-cur="1">Cursor B</button><button class="b sm" data-a="tanalog">Analógico</button><span class="mut">Rueda: zoom · clic: cursor A · Mayús+clic: cursor B</span></div></div></div>
     <div class="ed-right"><div class="pal-h">Propiedades</div><div id="props" class="props"></div><div id="warns" class="warns"></div></div>`;
     this.svg = r.querySelector('#sv'); this.palEl = r.querySelector('#pal'); this.propsEl = r.querySelector('#props');
     if (window.ResizeObserver) new ResizeObserver(() => { this.dirty = true; }).observe(this.svg);
@@ -1221,7 +1227,7 @@ S.Editor = class {
     else if (a === 'reset') this.recompile();
     else if (a === 'clear') { if (confirm('¿Vaciar el esquema?')) { this.doc = new Doc(); this.sel = null; this.recompile(); } }
     else if (a === 'tfollow') { this.timing.follow = true; }
-    else if (a === 'tcur') this.timing.clearCursors();
+    else if (a === 'tcur') this.timing.toggleCursor(+el.dataset.cur);
     else if (a === 'tanalog') { this.timing.analog = !this.timing.analog; el.classList.toggle('on', this.timing.analog); }
     else if (a === 'tt') { const t = this.truthTable(); if (t) { this.lastTT = t; this.onChange && this.onChange('tt', t); } }
     else if (a === 'fit') this.fit();
@@ -1629,7 +1635,7 @@ B.Editor = class {
       <button class="b" data-a="auto" title="Ajusta velocidad, paso y ventana del analizador al reloj del circuito, para que la señal cruce la pantalla en unos 6 s">Autoajuste</button>
       <span class="sp"></span><span class="tstat" id="btstat">t = 0</span><button class="b" data-a="fit">Ajustar vista</button><button class="b" data-a="png">Captura</button><button class="b" data-a="clear">Vaciar</button></div>
     <div class="cv"><svg id="bsv" xmlns="${NS}"></svg><div class="hint" id="bhint">Arrastra piezas del catálogo a la placa. Arrastra de un agujero a otro para tender un cable. Doble clic en una pieza para editar su valor. Rueda: zoom.</div><div class="tip" id="btip"></div></div>
-    <div class="tpanel"><canvas id="btc"></canvas><div class="tp-b"><button class="b sm" data-a="tfollow">Seguir</button><button class="b sm" data-a="tcur">Quitar cursores</button><button class="b sm" data-a="tanalog">Analógico</button><span id="laMeas" class="mut">Analizador lógico: pon pinzas en los agujeros (8 canales). Rueda: zoom.</span></div></div></div>
+    <div class="tpanel"><canvas id="btc"></canvas><div class="tp-b"><button class="b sm" data-a="tfollow">Seguir</button><button class="b sm" data-a="tcur" data-cur="0">Cursor A</button><button class="b sm" data-a="tcur" data-cur="1">Cursor B</button><button class="b sm" data-a="tanalog">Analógico</button><span id="laMeas" class="mut">Analizador lógico: pon pinzas en los agujeros (8 canales). Rueda: zoom.</span></div></div></div>
     <div class="ed-right"><div class="pal-h" id="bph">Banco</div><div id="bmcu" hidden></div><div id="bprops" class="props"></div><div id="bwarns" class="warns"></div></div>`;
     this.svg = r.querySelector('#bsv'); this.timing = new Timing(r.querySelector('#btc'), { span: 0.02, th: [0.6, 1.2] });
     if (window.ResizeObserver) new ResizeObserver(() => { this.dirty = true; }).observe(this.svg);
@@ -1679,7 +1685,7 @@ B.Editor = class {
     if (a === 'run') { this.running = !this.running; el.textContent = this.running ? '❚❚ Pausar' : '▶ Simular'; }
     else if (a === 'reset') this.recompile();
     else if (a === 'clear') { if (confirm('¿Vaciar la protoboard?')) { const m = this.board.mcu, mb = this.board.mb; this.board = B.newBoard(); this.board.mcu = m; this.board.mb = mb; this.sel = null; this.changed(); } }
-    else if (a === 'tfollow') this.timing.follow = true; else if (a === 'tcur') this.timing.clearCursors();
+    else if (a === 'tfollow') this.timing.follow = true; else if (a === 'tcur') this.timing.toggleCursor(+el.dataset.cur);
     else if (a === 'tanalog') { this.timing.analog = !this.timing.analog; el.classList.toggle('on', this.timing.analog); }
     else if (a === 'png') this.onChange && this.onChange('capture', this.svgToImg());
     else if (a === 'logm') this.logMeasure();
