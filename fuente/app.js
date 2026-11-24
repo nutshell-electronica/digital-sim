@@ -298,9 +298,9 @@ function buildOverlays() {
   $('#ov-help').innerHTML = `<div class="ovc"><button class="ovx" data-close title="Cerrar (Esc)">×</button><h3>Atajos y consejos</h3><div class="hl">
     <p><b>Montar:</b> arrastra una pieza del catálogo al lienzo. Arrastra una pieza para moverla y, con la pieza seleccionada, sus extremos (círculos verdes) para recolocarlos. Doble clic = editar valores (resistencia, color, referencia, modo…).</p>
     <p><b>Cables:</b> arrastra desde una patilla (esquema) o un agujero (protoboard) hasta otra. También vale pulsar una y luego la otra.</p>
-    <p><b>Vista:</b> rueda = zoom; arrastra el fondo para desplazar. En la protoboard, pasa el ratón por un agujero para ver su tensión.</p>
+    <p><b>Vista:</b> rueda = zoom; Alt + arrastrar (o botón central) desplaza la vista. En el esquema, arrastrar sobre el fondo dibuja un recuadro azul que selecciona varios componentes: arrástralos para moverlos en bloque o pulsa Supr para borrarlos; Mayús + clic añade o quita componentes. En la protoboard, pasa el ratón por un agujero para ver su tensión.</p>
     <p><b>Teclas:</b> Supr o Retroceso borra · Esc cancela · F1 guía de uso · Alt+1…5 cambia de pestaña.</p>
-    <p><b>Instrumentos:</b> el multímetro mide tensión o, en serie, corriente. La sonda lógica tiene tres indicadores: rojo (nivel alto, ≥ 2 V), verde (nivel bajo, ≤ 0,8 V) y ámbar (alta impedancia: nada fija el nodo, o tensión indefinida). El analizador usa sus umbrales (VIL 0,6 V, VIH 1,2 V).</p>
+    <p><b>Instrumentos:</b> el multímetro mide tensión o, en serie, corriente. La sonda lógica tiene tres indicadores: rojo (nivel alto, ≥ 2 V), verde (nivel bajo, ≤ 0,8 V) y azul (alta impedancia: nada fija el nodo, o tensión indefinida). El analizador usa sus umbrales (VIL 0,6 V, VIH 1,2 V).</p>
     <p><b>Realismo:</b> las entradas al aire, VCC sin conectar, un LED sin resistencia o un electrolítico invertido dan avisos y averías como en el taller. Puedes seguir simulando para ver las consecuencias.</p>
     <p><b>Límites:</b> simulación de paso fijo (10 µs–1 ms), sin retardos de propagación reales; el LCD no pasa por los pines.</p></div></div>`;
   document.querySelectorAll('.ov').forEach(o => o.addEventListener('click', (e) => { if (e.target.closest('[data-close]') || e.target === o) closeOv(); }));

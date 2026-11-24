@@ -127,7 +127,7 @@ B.Editor = class {
     const sv = this.svg;
     sv.addEventListener('mousedown', e => this.md(e)); window.addEventListener('mousemove', e => this.mm(e)); window.addEventListener('mouseup', e => this.mu(e));
     sv.addEventListener('wheel', e => { e.preventDefault(); const p = this.toDoc(e), f = e.deltaY > 0 ? 1.1 : 0.9; this.view.x = p.x - (p.x - this.view.x) * f; this.view.y = p.y - (p.y - this.view.y) * f; this.view.k *= f; this.dirty = true; }, { passive: false });
-    window.addEventListener('keydown', e => { if (!this.root.offsetParent || e.target.matches('input,select,textarea')) return; if (e.key === 'Escape') { this.cancelTool(); this.wf = null; this.dirty = true; UI.closePop(); } if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey && this.sel) { this.rotateSel(); e.preventDefault(); } if ((e.key === 'Delete' || e.key === 'Backspace') && this.sel) { this.removeSel(); e.preventDefault(); } });
+    window.addEventListener('keydown', e => { if (!this.root.offsetParent || e.target.matches('input,select,textarea')) return; if (e.key === 'Escape') { this.setMsel(null); this.mq = null; this.cancelTool(); this.wf = null; this.dirty = true; UI.closePop(); } if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey && this.sel) { this.rotateSel(); e.preventDefault(); } if ((e.key === 'Delete' || e.key === 'Backspace') && (this.sel || this.msel)) { this.removeSel(); e.preventDefault(); } });
   }
   buildPalette() {
     const el = this.root.querySelector('#bpal'), ics = Object.values(DSim.IC).filter(d => d.fam !== 'ID' || d.analog === '555');
@@ -186,6 +186,30 @@ B.Editor = class {
     for (const [r, y] of Object.entries(ROWY)) { const dd = Math.abs(d.y - y); if (dd < bd) { bd = dd; br = r; } }
     return hole(c, br);
   }
+  setMsel(ms, ends) { if (ms && ms.size === 0) ms = null; this.msel = ms; this.mends = ms ? (ends || {}) : null; }
+  itemBox(it, ctx) {
+    if (it.type === 'LA') return null; const pts = [];
+    ['a', 'b', 'tip', 'red', 'black'].forEach(q => { if (it[q]) { const z = keyXY(it[q], ctx); if (z) pts.push(z); } }); (it.pts || []).forEach(q => pts.push(q));
+    if (it.col !== undefined) { const sp = this.colSpan(it); let R = null; try { R = B.rowsOf(it); } catch (er) { } const y0 = R ? ROWY[R.hi] : ROWY.f, y1 = R ? ROWY[R.lo] : ROWY.e; pts.push({ x: B.hx(it.col) - 6, y: y0 - 8 }, { x: B.hx(it.col + sp - 1) + 6, y: y1 + 8 }); }
+    if (!pts.length) return null; const xs = pts.map(q => q.x), ys = pts.map(q => q.y); return { x0: Math.min(...xs) - 7, y0: Math.min(...ys) - 7, x1: Math.max(...xs) + 7, y1: Math.max(...ys) + 7 };
+  }
+  pickBox(q) {
+    const x0 = Math.min(q.x0, q.x1), x1 = Math.max(q.x0, q.x1), y0 = Math.min(q.y0, q.y1), y1 = Math.max(q.y0, q.y1), ctx = this.geom(), ms = q.add || new Set(), ends = Object.assign({}, this.mends || {});
+    const inside = (k) => { const z = k && keyXY(k, ctx); return !!z && z.x >= x0 && z.x <= x1 && z.y >= y0 && z.y <= y1; };
+    this.board.items.forEach(it => { if (it.type === 'LA') return;
+      if (it.type === 'WIRE') { const a = inside(it.a), b = inside(it.b); if (a || b) { ms.add(it.id); ends[it.id] = { a, b }; } return; }
+      const bx = this.itemBox(it, ctx); if (bx && bx.x1 >= x0 && bx.x0 <= x1 && bx.y1 >= y0 && bx.y0 <= y1) ms.add(it.id); });
+    if (ms.size === 1) { this.sel = [...ms][0]; this.setMsel(null); } else this.setMsel(ms, ends);
+    this.hint(ms.size > 1 ? ms.size + ' elementos seleccionados: arrastra uno para moverlos o pulsa Supr para borrarlos.' : '');
+  }
+  shiftItem(o, dc, dr, ends, dx, dy) {
+    const n = JSON.parse(JSON.stringify(o)); if (o.type === 'LA') return n;
+    if (o.col !== undefined) { const c = o.col + dc; if (c < 1 || c > COLS - this.colSpan(o) + 1) return null; n.col = c; if (['IC', 'PUSH', 'DIPSW', 'CLK', 'D7'].includes(o.type)) { const r = (o.r === undefined ? 5 : o.r) + dr; if (r < 1 || r > 9) return null; n.r = r; } return n; }
+    const ks = o.type === 'DMM' ? ['red', 'black'] : o.type === 'LP' ? ['tip'] : ['a', 'b']; let bad = false;
+    ks.forEach(k => { if (o.type === 'WIRE' && !ends[k]) return; if (B.parseKey(o[k]).t !== 'h') return; const nk = this.shiftKey(o[k], dc, dr); if (!nk) bad = true; else n[k] = nk; });
+    if (bad) return null; if (o.type === 'WIRE' && o.pts) { if (ends.a && ends.b) n.pts = o.pts.map(p => ({ x: p.x + dx, y: p.y + dy })); else delete n.pts; }
+    return n;
+  }
   shiftKey(k, dc, dr) { const p = B.parseKey(k); if (p.t !== 'h') return null; const c = p.col + dc, ri = ROWS.indexOf(p.row) + dr; if (c < 1 || c > COLS || ri < 0 || ri >= ROWS.length) return null; return hole(c, ROWS[ri]); }
   colSpan(it) { return it.type === 'IC' ? DSim.IC[it.ic].n / 2 : (it.type === 'PUSH' || it.type === 'CLK') ? (it.type === 'CLK' ? 3 : 2) : it.type === 'DIPSW' ? (it.n || 8) : it.type === 'D7' ? 5 : 1; }
   dropPart(t, d, preview) {
@@ -227,13 +251,14 @@ B.Editor = class {
     if (it.type === 'IC') { F.push({ k: 'label', label: 'Referencia', type: 'text', value: it.label }); before = `<p class="mut">${esc(DSim.IC[it.ic].desc)}</p>` + dsLinkHTML(it.ic); }
     if (it.type === 'DMM') F.push({ k: 'mode', label: 'Modo', type: 'sel', opts: [{ v: 'V', t: 'Voltios (DC)' }, { v: 'A', t: 'Amperios (en serie)' }, { v: 'R', t: 'Ohmios (sin alimentar)' }], value: it.mode });
     if (it.type === 'D7') F.push({ k: 'ca', label: 'Tipo', type: 'sel', opts: [{ v: '0', t: 'Cátodo común' }, { v: '1', t: 'Ánodo común (5161)' }], value: String(it.ca) });
-    if (it.type === 'LP') before = '<p class="mut">Rojo: nivel alto (≥ 2 V). Verde: nivel bajo (≤ 0,8 V). Ámbar: alta impedancia (nada fija el nodo) o nivel indefinido.</p>';
+    if (it.type === 'LP') before = '<p class="mut">Rojo: nivel alto (≥ 2 V). Verde: nivel bajo (≤ 0,8 V). Azul: alta impedancia (nada fija el nodo) o nivel indefinido.</p>';
     UI.pop(cv, e.clientX, e.clientY, nm, F, (k, v) => { it[k] = (k === 'ca') ? +v : v; this.changed(); }, { before, del: true, onDel: () => { this.sel = it.id; this.removeSel(); } });
   }
   md(e) {
     const p = this.toDoc(e), t = e.target; let hk = t.closest && t.closest('[data-k]');
     if (!hk && t.closest && t.closest('[data-id]')) { const it0 = this.board.items.find(i => i.id === t.closest('[data-id]').dataset.id); if (it0 && it0.type === 'WIRE') { const under = document.elementsFromPoint(e.clientX, e.clientY).find(x => x.dataset && x.dataset.k); if (under) hk = under; } }
     UI.closePop();
+    if (e.altKey || e.button === 1) { e.preventDefault(); this.pan = { x: e.clientX, y: e.clientY, vx: this.view.x, vy: this.view.y, alt: true, moved: false }; return; }
     if (this.wf) { if (e.button !== 0) { this.wf = null; this.dirty = true; return; } const wf = this.wf;
       if (hk) { const k2 = hk.dataset.k; if (k2 === wf.from && !wf.pts.length) { this.wf = null; this.hint('Cable cancelado.'); this.dirty = true; return; }
         const b = this.board, w = { id: 'b' + b.nid++, type: 'WIRE', a: wf.from, b: k2, color: wf.color || this.autoColor(wf.from, k2) }; if (wf.pts.length) w.pts = wf.pts.slice(); b.items.push(w); this.sel = w.id; this.wf = null; this.hint(''); this.changed(); return; }
@@ -253,13 +278,17 @@ B.Editor = class {
     const pb = t.closest && t.closest('[data-push]'); if (pb) { const it = this.board.items.find(i => i.id === pb.dataset.push); this.pressed = it; this.sim.parts[this.refs[it.id]].closed = true; this.sel = it.id; this.showProps(); this.dirty = true; return; }
     const ds = t.closest && t.closest('[data-dip]'); if (ds) { const [id, i] = ds.dataset.dip.split(':'); const it = this.board.items.find(x => x.id === id); it.st[+i] ^= 1; this.sim.parts[this.refs[id][+i]].closed = !!it.st[+i]; this.sel = id; this.dirty = true; return; }
     if (e.altKey) { const ids = [...new Set(document.elementsFromPoint(e.clientX, e.clientY).map(x => x.closest && x.closest('[data-id]')).filter(Boolean).map(x => x.dataset.id))]; if (ids.length) { const i = ids.indexOf(this.sel); this.sel = ids[(i + 1) % ids.length]; this.showProps(); this.dirty = true; return; } }
-    const pg = !(hk && !(t.closest && t.closest('[data-k]')) ) && t.closest && t.closest('[data-id]'); if (pg) { const it = this.board.items.find(i => i.id === pg.dataset.id); this.sel = it.id; this.showProps(); this.dirty = true;
+    const pg = !(hk && !(t.closest && t.closest('[data-k]')) ) && t.closest && t.closest('[data-id]'); if (pg) { const it = this.board.items.find(i => i.id === pg.dataset.id);
+      if (e.shiftKey && it.type !== 'LA') { const ms = this.msel || new Set(this.sel && this.sel !== 'mcu' ? [this.sel] : []); ms.has(it.id) ? ms.delete(it.id) : ms.add(it.id); this.sel = null; this.setMsel(ms, this.mends); this.showProps(); this.dirty = true; return; }
+      if (this.msel && this.msel.has(it.id)) { this.dr = { id: it.id, kind: 'gmove', moved: false, sx: e.clientX, sy: e.clientY, grab: this.nearestHole(p), origs: Object.fromEntries([...this.msel].map(i => [i, JSON.parse(JSON.stringify(this.board.items.find(x => x.id === i)))])) }; this.showProps(); this.dirty = true; return; }
+      this.msel = null; this.mends = null; this.sel = it.id; this.showProps(); this.dirty = true;
       this.dr = { id: it.id, kind: 'move', moved: false, sx: e.clientX, sy: e.clientY, grab: this.nearestHole(p), orig: JSON.parse(JSON.stringify(it)) }; return; }
     if (hk && e.button === 0 && !e.shiftKey) { this.wc = { from: hk.dataset.k, moved: false, sx: e.clientX, sy: e.clientY }; this.pend = { pts: [hk.dataset.k] }; this.mouse = p; this.sel = null; this.showProps(); this.dirty = true; return; }
-    this.sel = null; this.pan = { x: e.clientX, y: e.clientY, vx: this.view.x, vy: this.view.y }; this.showProps(); this.dirty = true;
+    if (!e.shiftKey) { this.sel = null; this.setMsel(null); } this.mq = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, sx: e.clientX, sy: e.clientY, add: e.shiftKey && this.msel ? new Set(this.msel) : null }; this.showProps(); this.dirty = true;
   }
   mm(e) {
-    if (this.pan) { this.view.x = this.pan.vx - (e.clientX - this.pan.x) * this.view.k; this.view.y = this.pan.vy - (e.clientY - this.pan.y) * this.view.k; this.dirty = true; }
+    if (this.mq) { const q = this.mq, m0 = this.toDoc(e); q.x1 = m0.x; q.y1 = m0.y; this.dirty = true; }
+    if (this.pan) { if (Math.abs(e.clientX - this.pan.x) + Math.abs(e.clientY - this.pan.y) > 4) this.pan.moved = true; this.view.x = this.pan.vx - (e.clientX - this.pan.x) * this.view.k; this.view.y = this.pan.vy - (e.clientY - this.pan.y) * this.view.k; this.dirty = true; }
     const t = e.target, hk = t.closest && t.closest && t.closest('[data-k]'); const k = hk ? hk.dataset.k : null;
     if (k !== this.hover) { this.hover = k; this.dirty = true; }
     const tip = this.root.querySelector('#btip');
@@ -270,7 +299,10 @@ B.Editor = class {
     const d = this.dr;
     if (d) {
       if (Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) > 4) d.moved = true;
-      if (d.moved) { const it = this.board.items.find(i => i.id === d.id), m = this.mouse;
+      if (d.moved && d.kind === 'gmove') { const m = this.mouse, cur = this.nearestHole(m), g = B.parseKey(d.grab), c = B.parseKey(cur), dc = c.col - g.col, dr = ROWS.indexOf(c.row) - ROWS.indexOf(g.row), dx = B.hx(c.col) - B.hx(g.col), dy = ROWY[c.row] - ROWY[g.row], nw = {};
+        let ok = true; for (const id in d.origs) { const n = this.shiftItem(d.origs[id], dc, dr, (this.mends || {})[id] || { a: 1, b: 1 }, dx, dy); if (!n) { ok = false; break; } nw[id] = n; }
+        if (ok) this.board.items = this.board.items.map(i => nw[i.id] || i); this.dirty = true; }
+      else if (d.moved) { const it = this.board.items.find(i => i.id === d.id), m = this.mouse;
         if (d.kind === 'mcu') { this.board.mcu.pos = { x: Math.round(m.x - d.ox), y: Math.round(m.y - d.oy) }; this.dirty = true; }
         else if (d.kind === 'bbody') { it.bpos = { x: Math.round(m.x - d.ox), y: Math.round(m.y - d.oy) }; }
         else if (d.kind === 'lach') { const k2 = this.nearestKey(m); if (d.idx === 'g') it.gnd = k2 || null; else it.ch[+d.idx] = k2 || null; }
@@ -286,7 +318,11 @@ B.Editor = class {
     if (this.pend && this.pend.pts.length || this.wf) this.dirty = true;
   }
   mu(e) {
+    if (this.pan && this.pan.alt && !this.pan.moved) { const ids = [...new Set(document.elementsFromPoint(e.clientX, e.clientY).map(x => x.closest && x.closest('[data-id]')).filter(Boolean).map(x => x.dataset.id))]; if (ids.length) { const i = ids.indexOf(this.sel); this.sel = ids[(i + 1) % ids.length]; this.setMsel(null); this.showProps(); this.dirty = true; } }
     this.pan = null;
+    if (this.mq) { const q = this.mq; this.mq = null;
+      if (Math.abs(e.clientX - q.sx) + Math.abs(e.clientY - q.sy) > 5) this.pickBox(q);
+      this.showProps(); this.dirty = true; }
     if (this.dr) { const d = this.dr; this.dr = null; if (d.moved) { this.changed(); } }
     if (this.wc) { const w = this.wc; this.wc = null; this.pend = null; if (!w.moved) { this.wf = { from: w.from, pts: [] }; this.hint('Cable: pica en zonas libres para crear codos y termina en un agujero. Esc cancela.'); } else if (!this.nearestKey(this.toDoc(e))) { this.wf = { from: w.from, pts: [nudge(this.toDoc(e))] }; this.hint('Codo añadido. Sigue picando y termina en un agujero. Esc cancela.'); } if (w.moved) { const k2 = this.nearestKey(this.toDoc(e)); if (k2 && k2 !== w.from) { const b = this.board; b.items.push({ id: 'b' + b.nid++, type: 'WIRE', a: w.from, b: k2, color: this.autoColor(w.from, k2) }); this.sel = 'b' + (b.nid - 1); this.changed(); } } this.dirty = true; }
     if (this.pressed) { const it = this.pressed; this.pressed = null; const ix = this.refs[it.id]; if (this.sim.parts[ix]) this.sim.parts[ix].closed = false; this.dirty = true; }
@@ -309,7 +345,8 @@ B.Editor = class {
     this.finish();
   }
   finish() { this.laItem = null; const keep = this.tool; this.pend = { pts: [] }; if (!['IC', 'PUSH', 'CLK', 'DIPSW', 'D7', 'LP', 'LA', 'DMM', 'DMMA'].includes(keep.split(':')[0])) { /* seguir colocando el mismo tipo */ } else if (!this.multi) { this.cancelTool(); } this.changed(); }
-  removeSel() { if (this.sel === 'mcu') { this.board.mcu = null; this.sel = null; this.changed(); this.onChange && this.onChange('mcu'); return; } this.board.items = this.board.items.filter(i => i.id !== this.sel); this.sel = null; this.changed(); }
+  removeSel() { if (this.msel && this.msel.size) { const ids = this.msel; this.board.items = this.board.items.filter(i => !ids.has(i.id)); this.setMsel(null); this.sel = null; this.changed(); return; }
+    if (this.sel === 'mcu') { this.board.mcu = null; this.sel = null; this.changed(); this.onChange && this.onChange('mcu'); return; } this.board.items = this.board.items.filter(i => i.id !== this.sel); this.sel = null; this.changed(); }
   changed() { this.recompile(); this.showProps(); this.onChange && this.onChange('board'); }
   itemsOf(type) { return this.board.items.filter(i => i.type === type); }
   /* ---- simulación ---- */
@@ -358,6 +395,7 @@ B.Editor = class {
     this.root.classList.toggle('mcusel', mon); if (pm) pm.hidden = !mon; pe.hidden = mon; this.root.querySelector('#bph').textContent = mon ? 'Programa de la placa · ' + (b.mcu.board === 'UNO' ? 'Arduino UNO' : 'ESP32-S3 DevKitC-1') : 'Banco';
     if (this._mon !== mon) { this._mon = mon; this.onChange && this.onChange('mcusel', mon); }
     if (mon) return;
+    if (this.msel && this.msel.size > 1) { pe.innerHTML = `<h4>${this.msel.size} elementos seleccionados</h4><p class="mut">Arrastra cualquiera de ellos para moverlos en bloque. Mayús + clic añade o quita elementos. Esc deselecciona.</p><button class="b sm" data-del>Eliminar selección</button>`; const d0 = pe.querySelector('[data-del]'); d0.onclick = () => this.removeSel(); return; }
     let h = '';
     h += `<div class="ph">Fuente MB102</div><label class="chk"><input type="checkbox" data-mb="on" ${b.mb.on ? 'checked' : ''}> conectada (interruptor)</label><label>Carril superior<select data-mb="top"><option value="0" ${!b.mb.top ? 'selected' : ''}>0 V</option><option value="3.3" ${b.mb.top === 3.3 ? 'selected' : ''}>3,3 V</option><option value="5" ${b.mb.top === 5 ? 'selected' : ''}>5 V</option></select></label><label>Carril inferior<select data-mb="bot"><option value="0" ${!b.mb.bot ? 'selected' : ''}>0 V</option><option value="3.3" ${b.mb.bot === 3.3 ? 'selected' : ''}>3,3 V</option><option value="5" ${b.mb.bot === 5 ? 'selected' : ''}>5 V</option></select></label>`;
     if (it) {
@@ -367,7 +405,7 @@ B.Editor = class {
       if (it.type === 'LED') h += `<label>Color<select data-ip="color">${['red', 'green', 'yellow', 'blue'].map(c => `<option ${it.color === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>`;
       if (it.type === 'IC') h += `<p class="mut">${esc(DSim.IC[it.ic].desc)}</p>${dsLinkHTML(it.ic)}<label>Referencia<input data-ip="label" value="${esc(it.label)}"></label><div id="pintab"></div>`;
       if (it.type === 'DMM') h += `<label>Modo<select data-ip="mode"><option value="V" ${it.mode === 'V' ? 'selected' : ''}>Voltios (DC)</option><option value="A" ${it.mode === 'A' ? 'selected' : ''}>Amperios (en serie)</option><option value="R" ${it.mode === 'R' ? 'selected' : ''}>Ohmios (sin alimentar)</option></select></label><div class="dmm" id="dmmv">—</div><button class="b sm prim" data-a="logm">Anotar medida en el cuaderno</button><label>Condición de la medida<input id="logc" placeholder="p. ej. pulsador sin pulsar"></label>`;
-      if (it.type === 'LP') h += `<div class="dmm" id="lpv">—</div><p class="mut">Rojo: nivel alto (≥ 2 V). Verde: nivel bajo (≤ 0,8 V). Ámbar: alta impedancia (nada fija el nodo) o nivel indefinido.</p>`;
+      if (it.type === 'LP') h += `<div class="dmm" id="lpv">—</div><p class="mut">Rojo: nivel alto (≥ 2 V). Verde: nivel bajo (≤ 0,8 V). Azul: alta impedancia (nada fija el nodo) o nivel indefinido.</p>`;
       if (it.type === 'WIRE') h += `<p class="mut">Supr para borrar el cable.</p>`;
       h += '<button class="b sm" data-del>Eliminar</button>';
     }
@@ -436,6 +474,8 @@ B.Editor = class {
     if (si) { const ends = si.type === 'DMM' ? ['red', 'black'] : si.type === 'LP' ? ['tip'] : ['R', 'LED', 'C', 'WIRE'].includes(si.type) ? ['a', 'b'] : [];
       if (si.type === 'LA') (si.ch || []).forEach((k, i) => { const z = k && pos(k); if (z) s += `<circle data-lach="${i}" data-item="${si.id}" cx="${z.x}" cy="${z.y}" r="7.5" fill="rgba(106,123,108,.28)" stroke="${SAGE}" stroke-width="1.6" style="cursor:grab"/>`; });
       ends.forEach(q => { const z = pos(si[q]); if (z) s += `<circle data-end="${q}" data-item="${si.id}" cx="${z.x}" cy="${z.y}" r="7.5" fill="rgba(106,123,108,.28)" stroke="${SAGE}" stroke-width="1.6" style="cursor:grab"/>`; }); }
+    if (this.msel) this.msel.forEach(id => { const it = b.items.find(i => i.id === id); if (it && it.type === 'WIRE') { const wa = pos(it.a), wb = pos(it.b); if (wa && wb) s += `<path d="${wirePath(wa, wb, it.pts)}" fill="none" stroke="#3B7DD8" stroke-opacity=".4" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>`; return; } const bx = it && this.itemBox(it, ctx); if (bx) s += `<rect x="${bx.x0}" y="${bx.y0}" width="${bx.x1 - bx.x0}" height="${bx.y1 - bx.y0}" rx="6" fill="#3B7DD8" fill-opacity=".16" stroke="#3B7DD8" stroke-width="2" pointer-events="none"/>`; });
+    if (this.mq) { const q = this.mq; s += `<rect x="${Math.min(q.x0, q.x1)}" y="${Math.min(q.y0, q.y1)}" width="${Math.abs(q.x1 - q.x0)}" height="${Math.abs(q.y1 - q.y0)}" fill="#3B7DD8" fill-opacity=".16" stroke="#3B7DD8" stroke-width="1.4" stroke-dasharray="5 3" pointer-events="none"/>`; }
     // MCU
     if (b.mcu) s += `<g data-mcubox="1">` + this.drawMcu(ctx) + `</g>` + (this.fire && this.fire.mcu && ctx.mcuBox ? B.flame(ctx.mcuBox.x + ctx.mcuBox.w / 2, ctx.mcuBox.y - 6, this.fire.mcu, 1.6) : '') + (this.sel === 'mcu' && ctx.mcuBox ? `<rect x="${ctx.mcuBox.x - 6}" y="${ctx.mcuBox.y - 6}" width="${ctx.mcuBox.w + 12}" height="${ctx.mcuBox.h + 12}" rx="8" fill="none" stroke="${SAGE}" stroke-dasharray="5 4" stroke-width="1.6" pointer-events="none"/>` : '');
     if (this.wf && this.mouse) { const a = pos(this.wf.from); if (a) { const sq = [a].concat(this.wf.pts, [this.mouse]); s += `<path d="M${sq.map(q => q.x + ',' + q.y).join(' L')}" fill="none" stroke="${this.wf.color || '#4C6A8C'}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 6" pointer-events="none"/>` + this.wf.pts.map(q => `<circle cx="${q.x}" cy="${q.y}" r="4.5" fill="#F9F8F6" stroke="${HI}" stroke-width="2" pointer-events="none"/>`).join('') + `<circle cx="${a.x}" cy="${a.y}" r="5" fill="none" stroke="${HI}" stroke-width="2" pointer-events="none"/>`; } }
@@ -532,7 +572,7 @@ B.Editor = class {
       Object.entries(seg).forEach(([k2, r], i) => s += `<rect x="${sx + r[0] - 2}" y="${sy + r[1] - 2}" width="${r[2]}" height="${r[3]}" rx="1.5" fill="${on[i] ? '#E0553A' : '#454845'}"/>`); s += `<circle cx="${sx + 54}" cy="${sy + 66}" r="2.6" fill="${on[7] ? '#E0553A' : '#454845'}"/>`;
       return G(s + selr(x, y, w, hh)); }
     if (it.type === 'LP') { const t = pos(it.tip); if (!t) return ''; const A = t.y < 190 ? 156 : 24, lp = this.lpState(it), hi = lp.s === 'H', lo = lp.s === 'L', zz = lp.s === 'Z';
-      return G(`<g transform="translate(${t.x},${t.y}) rotate(${A})"><path d="M0,0 L-2.4,-16 L2.4,-16 Z" fill="#b9bcc0" stroke="#555" stroke-width=".8"/><path d="M-4,-16 L4,-16 L7,-34 L-7,-34 Z" fill="#E8E4DA" stroke="#555"/><rect x="-7" y="-134" width="14" height="100" rx="4" fill="#E0B531" stroke="#333"/><rect x="-7" y="-62" width="14" height="5" fill="#B85D34"/><rect x="-7" y="-46" width="14" height="3" fill="#333"/>${hi ? '<circle cx="0" cy="-116" r="9" fill="#E0553A" opacity=".35"/>' : ''}${lo ? '<circle cx="0" cy="-102" r="9" fill="#4FA45C" opacity=".35"/>' : ''}${zz ? '<circle cx="0" cy="-88" r="9" fill="#F2B134" opacity=".4"/>' : ''}<circle cx="0" cy="-116" r="4" fill="${hi ? '#FF5A3C' : '#6a2a22'}" stroke="#222"/><circle cx="0" cy="-102" r="4" fill="${lo ? '#5BD16D' : '#27402b'}" stroke="#222"/><circle cx="0" cy="-88" r="4" fill="${zz ? '#FFC94A' : '#5a4a1a'}" stroke="#222"/><text x="12" y="-114" font-size="8" font-weight="700" fill="${MUTE}" transform="rotate(${-A} 12 -114)">1</text><text x="12" y="-100" font-size="8" font-weight="700" fill="${MUTE}" transform="rotate(${-A} 12 -100)">0</text><text x="12" y="-86" font-size="8" font-weight="700" fill="${MUTE}" transform="rotate(${-A} 12 -86)">Z</text><path d="M0,-134 C10,-160 50,-160 60,-140" fill="none" stroke="#1F2421" stroke-width="2.4"/></g><circle cx="${t.x}" cy="${t.y}" r="2.6" fill="#B85D34"/>` + selr(t.x - 40, t.y < 190 ? t.y : t.y - 135, 80, 135)); }
+      return G(`<g transform="translate(${t.x},${t.y}) rotate(${A})"><path d="M0,0 L-2.4,-16 L2.4,-16 Z" fill="#b9bcc0" stroke="#555" stroke-width=".8"/><path d="M-4,-16 L4,-16 L7,-34 L-7,-34 Z" fill="#E8E4DA" stroke="#555"/><rect x="-7" y="-134" width="14" height="100" rx="4" fill="#E0B531" stroke="#333"/><rect x="-7" y="-62" width="14" height="5" fill="#B85D34"/><rect x="-7" y="-46" width="14" height="3" fill="#333"/>${hi ? '<circle cx="0" cy="-116" r="9" fill="#E0553A" opacity=".35"/>' : ''}${lo ? '<circle cx="0" cy="-102" r="9" fill="#4FA45C" opacity=".35"/>' : ''}${zz ? '<circle cx="0" cy="-88" r="9" fill="#3B7DD8" opacity=".4"/>' : ''}<circle cx="0" cy="-116" r="4" fill="${hi ? '#FF5A3C' : '#6a2a22'}" stroke="#222"/><circle cx="0" cy="-102" r="4" fill="${lo ? '#5BD16D' : '#27402b'}" stroke="#222"/><circle cx="0" cy="-88" r="4" fill="${zz ? '#6BA4F2' : '#1d3556'}" stroke="#222"/><text x="12" y="-114" font-size="8" font-weight="700" fill="${MUTE}" transform="rotate(${-A} 12 -114)">1</text><text x="12" y="-100" font-size="8" font-weight="700" fill="${MUTE}" transform="rotate(${-A} 12 -100)">0</text><text x="12" y="-86" font-size="8" font-weight="700" fill="${MUTE}" transform="rotate(${-A} 12 -86)">Z</text><path d="M0,-134 C10,-160 50,-160 60,-140" fill="none" stroke="#1F2421" stroke-width="2.4"/></g><circle cx="${t.x}" cy="${t.y}" r="2.6" fill="#B85D34"/>` + selr(t.x - 40, t.y < 190 ? t.y : t.y - 135, 80, 135)); }
     if (it.type === 'DMM') { const a = pos(it.red), c = pos(it.black); if (!a || !c) return ''; const bp = it.bpos || { x: Math.max(a.x, c.x) + 20, y: 380 }, bx = bp.x + 60, by = bp.y, r = this.dmmRead(it), md = it.mode || 'V', BW = 190, BH = 160;
       const dial = [['V', 'V', 36], ['A', 'A', 78], ['R', 'Ω', 120]].map(([m, lb, dx]) => `<g data-dmode="${m}" data-item="${it.id}" style="cursor:pointer"><title>${m === 'V' ? 'Voltios DC' : m === 'A' ? 'Amperios DC (en serie)' : 'Ohmios (circuito sin alimentar)'}</title><circle cx="${bx - 60 + dx}" cy="${by + 106}" r="17" fill="${md === m ? '#B85D34' : '#2d302e'}" stroke="#000" stroke-width="1.5"/><text x="${bx - 60 + dx}" y="${by + 113}" font-size="21" font-weight="700" fill="#fff" text-anchor="middle" pointer-events="none">${lb}</text></g>`).join('');
       return G(`<path d="M${a.x},${a.y} Q${a.x + 20},${by - 30} ${bx - 20},${by + BH - 6}" fill="none" stroke="#B8432F" stroke-width="3.4"/><path d="M${c.x},${c.y} Q${c.x + 50},${by - 10} ${bx + 10},${by + BH - 6}" fill="none" stroke="#1F2421" stroke-width="3.4"/><circle cx="${a.x}" cy="${a.y}" r="4" fill="#B8432F"/><circle cx="${c.x}" cy="${c.y}" r="4" fill="#1F2421"/>
