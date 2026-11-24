@@ -66,6 +66,7 @@ B.compile = function (board, ctx) {
     nb.part({ type: 'MCU', vdd: bd.vdd, pinIds: ids.slice(), names: ids.map(i => i.slice(2)), ref: 'mcu' });
   }
   board.items.forEach(it => {
+    if (it.off && it.col !== undefined) return; /* pieza sacada de la placa: no conecta con nada */
     switch (it.type) {
       case 'WIRE': nb.join(N(it.a), N(it.b)); break;
       case 'R': refs[it.id] = push(it, { type: 'R', r: Math.max(Schem.parseVal(it.v) || 1, 1e-3), pinIds: [N(it.a), N(it.b)] }); break;
@@ -198,7 +199,7 @@ B.Editor = class {
     if (it.type === 'LA') return null; const pts = [];
     ['a', 'b', 'tip', 'red', 'black'].forEach(q => { if (it[q]) { const z = keyXY(it[q], ctx); if (z) pts.push(z); } }); (it.pts || []).forEach(q => pts.push(q));
     if (it.col !== undefined) { const sp = this.colSpan(it); let R = null; try { R = B.rowsOf(it); } catch (er) { } const y0 = R ? ROWY[R.hi] : ROWY.f, y1 = R ? ROWY[R.lo] : ROWY.e; pts.push({ x: B.hx(it.col) - 6, y: y0 - 8 }, { x: B.hx(it.col + sp - 1) + 6, y: y1 + 8 }); }
-    if (!pts.length) return null; const xs = pts.map(q => q.x), ys = pts.map(q => q.y); return { x0: Math.min(...xs) - 7, y0: Math.min(...ys) - 7, x1: Math.max(...xs) + 7, y1: Math.max(...ys) + 7 };
+    if (!pts.length) return null; if (it.off) pts.forEach(q => { q.x += it.off.x; q.y += it.off.y; }); const xs = pts.map(q => q.x), ys = pts.map(q => q.y); return { x0: Math.min(...xs) - 7, y0: Math.min(...ys) - 7, x1: Math.max(...xs) + 7, y1: Math.max(...ys) + 7 };
   }
   pickBox(q) {
     const x0 = Math.min(q.x0, q.x1), x1 = Math.max(q.x0, q.x1), y0 = Math.min(q.y0, q.y1), y1 = Math.max(q.y0, q.y1), ctx = this.geom(), ms = q.add || new Set(), ends = Object.assign({}, this.mends || {});
@@ -299,8 +300,8 @@ B.Editor = class {
     const wph = t.closest && t.closest('[data-wp]'); if (wph) { const it = this.board.items.find(i => i.id === wph.dataset.item); this.dr = { id: it.id, kind: 'wp', idx: +wph.dataset.wp, moved: false, sx: e.clientX, sy: e.clientY }; return; }
     { const g0 = t.closest && t.closest('[data-id]'), w0 = g0 && this.board.items.find(i => i.id === g0.dataset.id); if (w0 && w0.type === 'WIRE' && this.sel === w0.id && !(hk && !(t.closest('[data-k]')))) { const a = keyXY(w0.a, this.ctx), c = keyXY(w0.b, this.ctx); if (a && c) { const pts = w0.pts = w0.pts || [], seq = [a].concat(pts, [c]); let bi = 0, bd = 1e9; for (let i = 0; i < seq.length - 1; i++) { const A = seq[i], Bq = seq[i + 1], dx = Bq.x - A.x, dy = Bq.y - A.y, L2 = dx * dx + dy * dy || 1, u = Math.max(0, Math.min(1, ((p.x - A.x) * dx + (p.y - A.y) * dy) / L2)), d = Math.hypot(A.x + u * dx - p.x, A.y + u * dy - p.y); if (d < bd) { bd = d; bi = i; } } pts.splice(bi, 0, nudge(p)); this.dr = { id: w0.id, kind: 'wp', idx: bi, moved: true, sx: e.clientX, sy: e.clientY }; this.dirty = true; return; } } }
     const en = t.closest && t.closest('[data-end]'); if (en) { const it = this.board.items.find(i => i.id === en.dataset.item); this.dr = { id: it.id, kind: 'end', end: en.dataset.end, moved: false, sx: e.clientX, sy: e.clientY }; return; }
-    const pb = t.closest && t.closest('[data-push]'); if (pb) { const it = this.board.items.find(i => i.id === pb.dataset.push); this.pressed = it; this.sim.parts[this.refs[it.id]].closed = true; this.sel = it.id; this.showProps(); this.dirty = true; return; }
-    const ds = t.closest && t.closest('[data-dip]'); if (ds) { const [id, i] = ds.dataset.dip.split(':'); const it = this.board.items.find(x => x.id === id); it.st[+i] ^= 1; this.sim.parts[this.refs[id][+i]].closed = !!it.st[+i]; this.sel = id; this.dirty = true; return; }
+    const pb = t.closest && t.closest('[data-push]'); if (pb) { const it = this.board.items.find(i => i.id === pb.dataset.push); this.pressed = it; if (this.sim.parts[this.refs[it.id]]) this.sim.parts[this.refs[it.id]].closed = true; this.sel = it.id; this.showProps(); this.dirty = true; return; }
+    const ds = t.closest && t.closest('[data-dip]'); if (ds) { const [id, i] = ds.dataset.dip.split(':'); const it = this.board.items.find(x => x.id === id); it.st[+i] ^= 1; if (this.refs[id] && this.sim.parts[this.refs[id][+i]]) this.sim.parts[this.refs[id][+i]].closed = !!it.st[+i]; this.sel = id; this.dirty = true; return; }
     if (e.altKey) { const ids = [...new Set(document.elementsFromPoint(e.clientX, e.clientY).map(x => x.closest && x.closest('[data-id]')).filter(Boolean).map(x => x.dataset.id))]; if (ids.length) { const i = ids.indexOf(this.sel); this.sel = ids[(i + 1) % ids.length]; this.showProps(); this.dirty = true; return; } }
     const pg = !(hk && !(t.closest && t.closest('[data-k]')) ) && t.closest && t.closest('[data-id]'); if (pg) { const it = this.board.items.find(i => i.id === pg.dataset.id);
       if (e.shiftKey && it.type !== 'LA') { const ms = this.msel || new Set(this.sel && this.sel !== 'mcu' ? [this.sel] : []); ms.has(it.id) ? ms.delete(it.id) : ms.add(it.id); this.sel = null; this.setMsel(ms, this.mends); this.showProps(); this.dirty = true; return; }
@@ -334,7 +335,10 @@ B.Editor = class {
         else if (d.kind === 'end' && ['R', 'LED', 'C'].includes(it.type)) { it[d.end] = this.snapPx(m); }
         else if (d.kind === 'end') { const k2 = this.nearestKey(m); if (k2 && (it.type === 'WIRE' || it.type === 'DMM' || it.type === 'LP' || B.parseKey(k2).t !== 's')) it[d.end] = k2; }
         else { const cur = this.nearestHole(m), g = B.parseKey(d.grab), c = B.parseKey(cur), dc = c.col - g.col, dr = ROWS.indexOf(c.row) - ROWS.indexOf(g.row), o = d.orig;
-          if (o.col !== undefined) { it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dc)); if (['IC', 'PUSH', 'DIPSW', 'CLK', 'D7'].includes(o.type)) it.r = Math.max(1, Math.min(9, (o.r === undefined ? 5 : o.r) + dr)); }
+          if (o.col !== undefined && d.gp && !(m.x >= B.hx(1) - 20 && m.x <= B.hx(COLS) + 20 && m.y >= RAILY['T+'] - 20 && m.y <= RAILY['B+'] + 20)) { it.col = o.col; if (o.r !== undefined) it.r = o.r; it.off = { x: Math.round((o.off ? o.off.x : 0) + m.x - d.gp.x), y: Math.round((o.off ? o.off.y : 0) + m.y - d.gp.y) }; }
+          else if (o.col !== undefined) { let dcc = dc, drr = dr; if (o.off) { dcc = Math.round((B.hx(o.col) + o.off.x + (m.x - d.gp.x) - X0) / P) + 1 - o.col; drr = 0; } delete it.off; it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dcc));
+            if (['IC', 'PUSH', 'DIPSW', 'CLK', 'D7'].includes(o.type)) it.r = Math.max(1, Math.min(9, (o.r === undefined ? 5 : o.r) + drr)); }
+          else if (false) { it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dc)); if (['IC', 'PUSH', 'DIPSW', 'CLK', 'D7'].includes(o.type)) it.r = Math.max(1, Math.min(9, (o.r === undefined ? 5 : o.r) + dr)); }
           else if (o.type === 'LP') { const k2 = this.nearestKey(m); if (k2) it.tip = k2; }
           else if (o.type === 'LA') { /* el analizador es fijo; se mueven sus clips con los tiradores */ }
           else if (['R', 'LED', 'C'].includes(o.type) && d.gp) { const dxp = m.x - d.gp.x, dyp = m.y - d.gp.y, ks = ['a', 'b'].map(q => { const z = keyXY(o[q], this.ctx || this.geom()); return z ? this.snapPx({ x: z.x + dxp, y: z.y + dyp }) : o[q]; });
@@ -495,7 +499,7 @@ B.Editor = class {
     s += this.drawMB();
     // componentes
     const pos = (key) => keyXY(key, ctx);
-    b.items.forEach(it => { s += this.drawItem(it, pos); });
+    b.items.forEach(it => { s += it.off ? `<g transform="translate(${it.off.x},${it.off.y})">${this.drawItem(it, pos)}</g>` : this.drawItem(it, pos); });
     if (this.ghost) { try { s += `<g opacity=".55" pointer-events="none">${this.drawItem(this.ghost, pos)}</g>`; } catch (er) { } }
     const si = b.items.find(i => i.id === this.sel);
     if (si) { const ends = si.type === 'DMM' ? ['red', 'black'] : si.type === 'LP' ? ['tip'] : ['R', 'LED', 'C', 'WIRE'].includes(si.type) ? ['a', 'b'] : [];
