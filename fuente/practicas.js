@@ -23,7 +23,7 @@ const MET = {
 const L = (id, tema, ra, title, tool, brief, kind, ics, extra, opt) => Object.assign({ id, tema, ra, title, tool, brief, kind, ics: ics || [], extra: extra || [], pasos: MET[kind] }, opt || {});
 
 PR.list = [
-  L('1.1', 1, 'RA1 a, b, e', 'Resistencias de pull-up y pull-down', 'board', 'Pull-up y pull-down con pulsador: corriente y nivel lógico, simulación y montaje en protoboard.', 'pull', [], ['MB102', 'PROTO']),
+  L('1.1', 1, 'RA1 a, b, e', 'Resistencias de pull-up y pull-down', 'schem', 'Pull-up y pull-down con pulsador: corriente y nivel lógico, simulación y montaje en protoboard.', 'pull', [], ['MB102', 'PROTO']),
   L('2.1', 2, 'RA1 a, c, d, e', 'Comprobación de integrados de puertas lógicas', 'board', 'Banco de pruebas de puertas lógicas (7400, 7402…): tabla de verdad y tensiones VOH/VOL.', 'gates', ['74LS00', '74LS02', '74LS04', '74LS08', '74LS32', '74LS86'], ['MB102', 'SONDA']),
   L('3.1', 3, 'RA2 a, c, d, f', 'Semáforo electrónico', 'kmap', 'Tabla de verdad con X, Karnaugh de 3 variables y circuito de 2 entradas.', 'comb', ['74LS00', '74LS04', '74LS08', '74LS32']),
   L('3.2', 3, 'RA2 a, c, d, f', 'Clasificadora de aguacates', 'kmap', 'Karnaugh de 4 variables con dos salidas independientes.', 'comb', ['74LS00', '74LS04', '74LS08', '74LS32']),
