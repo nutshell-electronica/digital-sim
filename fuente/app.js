@@ -83,11 +83,40 @@ function buildPractices() {
   const free = Practicas.free, frow = `<div class="prow free ${App.practice === 'LIBRE' ? 'cur' : ''}"><div class="pn">Libre</div><div class="pb"><div class="pt">${esc(free.title)}</div><div class="pd">${esc(free.brief)}</div><div class="pm">Sin enunciado ni informe guiado · empieza en <b>${Practicas.TOOLNAME[free.tool]}</b></div></div><button class="b ${App.practice === 'LIBRE' ? 'prim' : ''}" data-open="LIBRE">Abrir</button></div>`;
   const rows = frow + Practicas.list.map(p => `<div class="prow ${p.id === App.practice ? 'cur' : ''}"><div class="pn">${p.id}</div><div class="pb"><div class="pt">${esc(p.title)}</div><div class="pd">${esc(p.brief)}</div><div class="pm">Tema ${p.tema} · ${esc(p.ra)} · empieza en <b>${Practicas.TOOLNAME[p.tool]}</b></div>${p.ics.length ? `<div class="pm">Material: ${p.ics.map(icChip).join(' ')}</div>` : ''}</div><div class="pbtn"><button class="b ${p.id === App.practice ? 'prim' : ''}" data-open="${p.id}">Abrir</button><button class="b" data-enun="${p.id}">Enunciado</button></div></div>`).join('');
   h.innerHTML = `<div class="ovc"><button class="ovx" data-close title="Cerrar (Esc)">×</button><div class="kick">EQUIPOS MICROPROGRAMABLES</div><h3>Prácticas</h3>
-    <p class="lead">Elige una práctica para ver su enunciado y el material. El espacio de trabajo siempre empieza vacío: tú montas el circuito, tú simulas y tú mides.</p>
+    <p class="lead">Elige una práctica para ver su enunciado y el material. <button class="b" data-allpdf style="margin-left:8px" title="Un PDF con todos los guiones: elige «Guardar como PDF» en el diálogo de impresión">Todos los guiones en PDF</button> El espacio de trabajo siempre empieza vacío: tú montas el circuito, tú simulas y tú mides.</p>
     <div class="plgrid"><section class="plist">${rows}</section><aside>
     <div class="inv"><div class="ih">Cómo se trabaja</div><p>1. Arrastra piezas del catálogo (izquierda) al lienzo, o dibuja cables arrastrando de una patilla/agujero a otro.</p><p>2. Doble clic en una pieza para cambiar su valor.</p><p>3. Pulsa «Simular». Si algo falla, falla como en el taller: entrada al aire, VCC sin conectar, LED sin resistencia…</p><p>4. En «Informe» tienes tus tablas, mapas y capturas; tú añades lo medido y las fotos.</p><p>Primera vez: <a href="#" data-guide>Guía de uso</a>.</p></div>
     <div class="inv"><div class="ih">Integrados modelados</div><p>74LS/74HC 00, 02, 04, 08, 10, 14, 32, 86 · 74LS/74HC 74 y 76 · 74LS83 · 74LS/74HC 151 · 7442 · 74LS47/48 · 74LS148 · 74LS165 · 74HC175 · 74LS194 · NE555.</p></div></aside></div></div>`;
-  h.onclick = (e) => { const b = e.target.closest('[data-open]'); if (b) App.openPractice(b.dataset.open); const en = e.target.closest('[data-enun]'); if (en) { App.enunId = en.dataset.enun; openOv('ov-enun'); } const g = e.target.closest('[data-goto]'); const gd = e.target.closest('[data-guide]'); if (gd) { e.preventDefault(); openOv('ov-guide'); } };
+  h.onclick = (e) => { if (e.target.closest('[data-allpdf]')) { printGuiones(Practicas.list.map(p => p.id)); return; } const b = e.target.closest('[data-open]'); if (b) App.openPractice(b.dataset.open); const en = e.target.closest('[data-enun]'); if (en) { App.enunId = en.dataset.enun; openOv('ov-enun'); } const g = e.target.closest('[data-goto]'); const gd = e.target.closest('[data-guide]'); if (gd) { e.preventDefault(); openOv('ov-guide'); } };
+}
+/* enunciado: HTML del cuerpo, texto plano, copiar y guión en PDF (diálogo de impresión) */
+function enunBody(id) {
+  const p = Practicas.get(id), E = (Practicas.enun || {})[id]; if (!p || !E) return '';
+  const box = (b) => { const k = /SEGURIDAD|ANTES DE DAR TENSI|ANTES DE EMPEZAR/.test(b.t) ? 'warn' : /TERMINADA/.test(b.t) ? 'chk' : /ENUNCIADO/.test(b.t) ? 'enu' : '';
+    const body = k === 'chk' ? '<ul>' + b.p.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : b.p.map(x => `<p class="${/^[–-] /.test(x) ? 'bl' : ''}">${esc(x)}</p>`).join('');
+    return `<div class="ebox ${k}"><div class="eh">${esc(b.t)}</div>${body}</div>`; };
+  const mat = p.ics.map(icChip).join(' ');
+  return `<div class="kick">PRÁCTICA ${p.id} · TEMA ${p.tema} · ${esc(p.ra)}</div><h3>${esc(p.title)}</h3>${E.boxes.map(box).join('')}${mat ? `<p class="pm">Hojas de datos: ${mat}</p>` : ''}
+    ${E.heads.length ? `<div class="ebox"><div class="eh">APARTADOS DEL CUADERNO</div><ol class="eap">${E.heads.map(x => `<li>${esc(x.replace(/^\d+\.\s*/, ''))}</li>`).join('')}</ol></div>` : ''}`;
+}
+function enunText(id) {
+  const p = Practicas.get(id), E = (Practicas.enun || {})[id]; if (!p || !E) return '';
+  let t = `PRÁCTICA ${p.id} · TEMA ${p.tema} · ${p.ra}\n${p.title}\n`;
+  E.boxes.forEach(b => { t += `\n${b.t}\n` + b.p.map(x => (/TERMINADA/.test(b.t) ? '• ' : '') + x).join('\n') + '\n'; });
+  if (p.ics.length) t += `\nHojas de datos: ${p.ics.join(', ')}\n`;
+  if (E.heads.length) t += '\nAPARTADOS DEL CUADERNO\n' + E.heads.map((x, i) => `${i + 1}. ${x.replace(/^\d+\.\s*/, '')}`).join('\n') + '\n';
+  return t;
+}
+function copyText(t, msg) {
+  const ok = () => App.toast(msg || 'Copiado.'), fb = () => { const a = document.createElement('textarea'); a.value = t; a.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(a); a.select(); try { document.execCommand('copy'); ok(); } catch (er) { App.toast('No se pudo copiar: selecciona el texto a mano.'); } a.remove(); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, fb); else fb();
+}
+function printGuiones(ids) {
+  ids = ids.filter(i => (Practicas.enun || {})[i]); if (!ids.length) return App.toast('No hay enunciado que imprimir.');
+  const old = $('#printroot'); if (old) old.remove(); const d = document.createElement('div'); d.id = 'printroot';
+  d.innerHTML = ids.map(i => `<section class="guion">${enunBody(i)}</section>`).join(''); document.body.appendChild(d); document.body.classList.add('printing');
+  App.toast('En el diálogo de impresión elige «Guardar como PDF».');
+  setTimeout(() => { window.print(); setTimeout(() => { document.body.classList.remove('printing'); d.remove(); }, 400); }, 250);
 }
 /* enunciado completo de una práctica (tomado de su cuaderno) */
 function buildEnun(id) {
@@ -96,11 +125,10 @@ function buildEnun(id) {
     const body = k === 'chk' ? '<ul>' + b.p.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : b.p.map(x => `<p class="${/^[–-] /.test(x) ? 'bl' : ''}">${esc(x)}</p>`).join('');
     return `<div class="ebox ${k}"><div class="eh">${esc(b.t)}</div>${body}</div>`; };
   const cur = App.practice === id, mat = p.ics.map(icChip).join(' ');
-  h.innerHTML = `<div class="ovc enun"><button class="ovx" data-close title="Cerrar (Esc)">×</button><div class="kick">PRÁCTICA ${p.id} · TEMA ${p.tema} · ${esc(p.ra)}</div><h3>${esc(p.title)}</h3>
-    ${E.boxes.map(box).join('')}${mat ? `<p class="pm">Hojas de datos: ${mat}</p>` : ''}
-    ${E.heads.length ? `<div class="ebox"><div class="eh">APARTADOS DEL CUADERNO</div><ol class="eap">${E.heads.map(x => `<li>${esc(x.replace(/^\d+\.\s*/, ''))}</li>`).join('')}</ol><p class="mut">En el simulador se hace lo que corresponde a cada apartado; las respuestas escritas van en el cuaderno y en «Informe».</p></div>` : ''}
-    <div class="eact">${cur ? '<button class="b prim" data-estart>Empezar a trabajar</button>' : `<button class="b prim" data-eopen="${p.id}">Abrir esta práctica</button>`}<button class="b" data-close>Cerrar</button></div></div>`;
-  h.onclick = (e) => { if (e.target.closest('[data-estart]')) { closeOv(); App.go(p.tool); } const o = e.target.closest('[data-eopen]'); if (o) App.openPractice(o.dataset.eopen, true); };
+  h.innerHTML = `<div class="ovc enun"><button class="ovx" data-close title="Cerrar (Esc)">×</button>${enunBody(id)}
+    <div class="eact"><button class="b" data-ecopy="${p.id}" title="Copia el enunciado como texto">Copiar enunciado</button><button class="b" data-epdf="${p.id}" title="Abre el diálogo de impresión: elige «Guardar como PDF»">Guión en PDF</button>${cur ? '<button class="b prim" data-estart>Empezar a trabajar</button>' : `<button class="b prim" data-eopen="${p.id}">Abrir esta práctica</button>`}<button class="b" data-close>Cerrar</button></div></div>`;
+  h.onclick = (e) => { const cp = e.target.closest('[data-ecopy]'); if (cp) copyText(enunText(cp.dataset.ecopy), 'Enunciado copiado al portapapeles.'); const pd = e.target.closest('[data-epdf]'); if (pd) printGuiones([pd.dataset.epdf]);
+    if (e.target.closest('[data-estart]')) { closeOv(); App.go(p.tool); } const o = e.target.closest('[data-eopen]'); if (o) App.openPractice(o.dataset.eopen, true); };
 }
 /* barra con el enunciado de la práctica actual */
 function updatePbar() {

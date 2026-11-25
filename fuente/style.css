@@ -95,6 +95,7 @@ table.gt{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}.gt th,
 @media print{@page{size:A4;margin:16mm 14mm 20mm;@bottom-center{content:"Página " counter(page) " de " counter(pages);font:9pt Arial;color:#696C69}}@page :first{@bottom-center{content:none}}
 html,body{background:#F9F8F6!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;height:auto}
 body.printing #app{display:none!important}body.printing #printroot{display:block}
+#printroot .guion{break-after:page;font:10.5pt/1.5 Arial,sans-serif;color:#1F2421}#printroot .guion:last-child{break-after:auto}#printroot .guion .ebox{break-inside:avoid;background:none}#printroot .guion h3{font-size:20pt;margin:2pt 0 10pt}#printroot .guion .pm .chip,#printroot .guion .pm a{color:#1F2421;text-decoration:none}
 #printroot .rep .page{width:auto;margin:0;border:0;padding:0;min-height:0;box-shadow:none}#printroot .rep .cover{min-height:255mm}#printroot .rep .photo input,#printroot .rep .photo label small{display:none}}
 
 .ed.mcusel{grid-template-columns:236px 1fr minmax(430px,38%)}.ed-right #bmcu{display:flex;flex-direction:column;gap:8px;padding:8px 10px;overflow:auto;min-height:0}.ed-right #bmcu[hidden]{display:none}
