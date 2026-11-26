@@ -475,7 +475,8 @@ B.Editor = class {
     this.snd(vis);
     if (this.dirty && vis) { this.dirty = false; this.render(); this.timing.draw(); this.root.querySelector('#btstat').textContent = 't = ' + Timing.fmtT(this.sim.t); this.updateProps(); this.updateLAmeas(); }
   }
-  snd(vis) { const on = vis && this.running && this.sound !== false, L = []; if (on) for (const it of this.board.items) { if (it.type !== 'SENS' || (it.kind !== 'BUZZ' && it.kind !== 'BUZZP') || (it.o && it.o.snd === 'no')) continue; const ix = this.refs[it.id], sp = typeof ix === 'number' ? this.sim.parts[ix] : null; if (sp && sp.st.f > 20) L.push({ id: it.id, f: sp.st.f }); }
+  snd(vis) { const on = vis && this.running && this.sound !== false, L = []; this._rl = this._rl || {};
+    for (const it of this.board.items) { if (it.type !== 'SENS' || it.kind !== 'RELAY') continue; const ix = this.refs[it.id], sp = typeof ix === 'number' ? this.sim.parts[ix] : null, pos = sp && sp.st.pos ? 1 : 0; if (it.id in this._rl && this._rl[it.id] !== pos && on) SC().click(!!pos); this._rl[it.id] = pos; } if (on) for (const it of this.board.items) { if (it.type !== 'SENS' || (it.kind !== 'BUZZ' && it.kind !== 'BUZZP') || (it.o && it.o.snd === 'no')) continue; const ix = this.refs[it.id], sp = typeof ix === 'number' ? this.sim.parts[ix] : null; if (sp && sp.st.f > 20) L.push({ id: it.id, f: sp.st.f }); }
     const k = L.map(x => x.id + ':' + x.f).join(); if (k === this._sk) return; this._sk = k; SC().sound(L); }
   updateLAmeas() { const el = this.root.querySelector('#laMeas'); if (!this.timing.ch.length) return; const m = this.timing.ch.map((c, i) => { const r = this.timing.measure(i); return r ? `CH${i + 1}: ${Timing.fmtF(r.freq)}${r.duty != null ? ' · ' + (r.duty * 100).toFixed(0) + ' %' : ''}` : null; }).filter(Boolean); el.textContent = m.length ? m.join('  ·  ') : 'Analizador lógico: sin señal periódica en la ventana.'; }
   /* ---- panel del banco ---- */

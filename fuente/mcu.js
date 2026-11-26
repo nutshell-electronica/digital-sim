@@ -275,7 +275,7 @@ M.exampleCircuit = function (id, bd) {
     case 'servo_barrido': { const sv = sens('SERVO', 5); w(sv(0), G); w(sv(1), V5); w(sv(2), sk(P.PWM)); break; }
     case 'melodia': { const z = sens('BUZZP', 6); w(sk(P.B2), hl(3)); R(hl(3, 'd'), hl(6, 'd'), '100'); w(z(3), G); break; }
     case 'joystick': { const j = sens('JOY', 5); w(j(0), G); w(j(1), VA); w(j(2), sk(AN)); w(j(3), sk(AN2)); w(j(4), sk(P.B)); break; }
-    case 'riego': { const s2 = sens('SOIL', 5); w(s2(0), VA); w(s2(1), G); w(s2(3), sk(AN)); const r = sens('RELAY', 14); w(r(0), V5); w(r(1), G); w(r(2), sk(P.B)); w(r(5), V5); w(r(6), hl(24)); const m = sens('MOTOR', 24); w(m(1), G); break; }
+    case 'riego': { const s2 = sens('SOIL', 5); w(s2(0), VA); w(s2(1), G); w(s2(3), sk(AN)); const r = sens('RELAY', 14); w(r(0), V5); w(r(1), G); w(r(2), sk(P.B)); w(r(5), V5); w(r(6), hl(34)); const m = sens('MOTOR', 34); w(m(1), G); break; }
     case 'rgb': { const g = sens('RGB', 12); R(hl(6, 'd'), hl(12, 'd'), '220'); w(sk(P.L), hl(6)); R(hl(8, 'c'), hl(14, 'c'), '220'); w(sk(P.L2), hl(8)); R(hl(10, 'b'), hl(15, 'b'), '220'); w(sk(P.L3), hl(10)); w(g(1), G); break; }
     case 'i2cscan': { const b = bus(), a = sens('BMP280', 5), m = sens('MPU6050', 14);
       w(a(0), V3); w(a(1), G); w(a(2), sk(b.scl)); w(a(3), sk(b.sda)); w(a(5), G); w(m(0), V3); w(m(1), G); w(m(2), sk(b.scl)); w(m(3), sk(b.sda)); w(m(6), G); break; }
