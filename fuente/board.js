@@ -434,7 +434,7 @@ B.Editor = class {
     const keepMcu = this.mcuCtl;
     const c = B.compile(this.board); this.cmp = c; this.nl = c.nl; this.refs = c.refs;
     this.sim = new DSim.Sim(c.nl, { dt: this.dt, recEvery: Math.max(1, Math.round(2e-5 / this.dt)) });
-    this.alerted = new Set(); this.fire = {}; this.lastAlerts = 0; this.extraAlerts = [];
+    this.alerted = new Set(); this.fire = {}; this.lastAlerts = 0; this.extraAlerts = []; this.crash = null; { const o = this.root.querySelector('#bcrash'); if (o) o.hidden = true; }
     if (this.board.mcu) { const mp = this.sim.parts.find(p => p.type === 'MCU'); if (mp) { this.mcuPart = mp; this.onChange && this.onChange('mcu-build', mp); } }
     const ch = [];
     this.itemsOf('LA').forEach(la => la.ch.forEach((k, i) => { if (!k) return; const n = c.nl.index(B.netOf(k)); if (n != null) ch.push({ name: 'CH' + (i + 1) + ' · ' + this.keyLabel(k), w: this.sim.addWatch(n), color: i % 2 ? '#B85D34' : '#1F2421' }); }));
@@ -443,16 +443,24 @@ B.Editor = class {
     this.root.querySelector('#bwarns').innerHTML = this.warnHTML();
     this.dirty = true;
   }
+  failure(list) {
+    this.crash = list; this.running = false; const rb = this.root.querySelector('[data-a=run]'); if (rb) rb.textContent = '▶ Simular';
+    let o = this.root.querySelector('#bcrash'); if (!o) { o = document.createElement('div'); o.id = 'bcrash'; o.className = 'crash'; this.root.appendChild(o); }
+    o.innerHTML = `<div class="cbox"><div class="ct">⚠ Fallo en el montaje: la simulación se ha detenido</div>${list.map(m => `<p>${esc(m)}</p>`).join('')}<p class="mut">Revisa las conexiones (alimentación, polaridad, resistencias en serie, tensión de la placa) y reinicia para reponer las piezas dañadas.</p><div class="cb"><button class="b prim" data-cr="reset">Reiniciar</button><button class="b" data-cr="close">Cerrar</button></div></div>`; o.hidden = false;
+    o.querySelector('[data-cr=reset]').onclick = () => { o.hidden = true; this.crash = null; this.recompile(); };
+    o.querySelector('[data-cr=close]').onclick = () => { o.hidden = true; };
+    this.onChange && this.onChange('alert'); }
   warnHTML() { const A = (this.sim ? this.sim.alerts : []).map(a => a.msg), W = [...this.warns, ...A, ...(this.extraAlerts || [])]; return W.length ? '<div class="ph">Avisos del banco</div>' + W.map(w => `<p class="warn">${esc(w)}</p>`).join('') : '<p class="mut">Sin avisos.</p>'; }
   checks() {
-    const sim = this.sim; this.extraAlerts = this.extraAlerts || [];
+    const sim = this.sim; this.extraAlerts = this.extraAlerts || []; const fails = [];
     this.board.items.forEach(it => {
       const ix = this.refs[it.id], sp = typeof ix === 'number' ? sim.parts[ix] : null; if (!sp) return;
-      if (!this.fire[it.id]) { const m = sim.overload(sp); if (m) { const nm = it.type === 'IC' ? DSim.IC[it.ic].name + ' ' + (it.label || '') : it.type === 'R' ? 'Resistencia ' + it.v + 'Ω' : it.type === 'LED' ? 'LED' : it.type === 'D7' ? 'Display' : it.type === 'SENS' ? ((SC().CAT[it.kind] || {}).name || 'Sensor') : it.type; this.fire[it.id] = nm.trim() + ': ' + m; this.alerted.add(it.id); this.extraAlerts.push('Sobrecarga en ' + nm.trim() + ': ' + m + ' Pulsa «Reiniciar» para reponer la pieza.'); this.dirty = true; } }
-      if (it.type === 'C' && Schem.parseVal(it.v) >= 1e-6 && !this.alerted.has(it.id)) { const v = sim.v[sp.pins[0]] - sim.v[sp.pins[1]]; if (v < -1) { this.alerted.add(it.id); const m = `condensador electrolítico ${it.v}F con la polaridad invertida (${v.toFixed(1).replace('.', ',')} V): puede reventar. La pata + (franja clara = −) va al lado de más tensión.`; this.fire[it.id] = 'Condensador ' + it.v + 'F: ' + m; this.extraAlerts.push('Sobrecarga en ' + m); this.dirty = true; } }
+      if (!this.fire[it.id]) { const m = sim.overload(sp); if (m) { const nm = it.type === 'IC' ? DSim.IC[it.ic].name + ' ' + (it.label || '') : it.type === 'R' ? 'Resistencia ' + it.v + 'Ω' : it.type === 'LED' ? 'LED' : it.type === 'D7' ? 'Display' : it.type === 'SENS' ? ((SC().CAT[it.kind] || {}).name || 'Sensor') : it.type; this.fire[it.id] = nm.trim() + ': ' + m; this.alerted.add(it.id); this.extraAlerts.push('Sobrecarga en ' + nm.trim() + ': ' + m + ' Pulsa «Reiniciar» para reponer la pieza.'); fails.push(nm.trim() + ': ' + m); this.dirty = true; } }
+      if (it.type === 'C' && Schem.parseVal(it.v) >= 1e-6 && !this.alerted.has(it.id)) { const v = sim.v[sp.pins[0]] - sim.v[sp.pins[1]]; if (v < -1) { this.alerted.add(it.id); const m = `condensador electrolítico ${it.v}F con la polaridad invertida (${v.toFixed(1).replace('.', ',')} V): puede reventar. La pata + (franja clara = −) va al lado de más tensión.`; this.fire[it.id] = 'Condensador ' + it.v + 'F: ' + m; this.extraAlerts.push('Sobrecarga en ' + m); fails.push('Condensador ' + it.v + 'F: ' + m); this.dirty = true; } }
     });
-    sim.parts.forEach(p => { if (p.type === 'V' && !this.alerted.has('V' + p.idx)) { const v = sim.v[p.pins[0]]; if (v < p.v * 0.5) { this.alerted.add('V' + p.idx); this.fire.mb = `la alimentación de ${p.v} V cae a ${v.toFixed(2).replace('.', ',')} V: cortocircuito entre +V y GND.`; this.dirty = true; this.extraAlerts.push(`Posible cortocircuito: la alimentación de ${p.v} V cae a ${v.toFixed(2)} V.`); } } });
-    if (this.mcuPart && this.mcuPart.ctl && this.mcuPart.ctl.checkPins) { const m = this.mcuPart.ctl.checkPins(sim); m && m.forEach(x => { if (!this.alerted.has(x)) { this.alerted.add(x); this.fire.mcu = x; this.dirty = true; this.extraAlerts.push(x); } }); }
+    sim.parts.forEach(p => { if (p.type === 'V' && !this.alerted.has('V' + p.idx)) { const v = sim.v[p.pins[0]]; if (v < p.v * 0.5) { this.alerted.add('V' + p.idx); this.fire.mb = `la alimentación de ${p.v} V cae a ${v.toFixed(2).replace('.', ',')} V: cortocircuito entre +V y GND.`; this.dirty = true; this.extraAlerts.push(`Posible cortocircuito: la alimentación de ${p.v} V cae a ${v.toFixed(2)} V.`); fails.push(`Cortocircuito: la alimentación de ${p.v} V cae a ${v.toFixed(2).replace('.', ',')} V (+V unido a GND).`); } } });
+    if (this.mcuPart && this.mcuPart.ctl && this.mcuPart.ctl.checkPins) { const m = this.mcuPart.ctl.checkPins(sim); m && m.forEach(x => { if (!this.alerted.has(x)) { this.alerted.add(x); this.dirty = true; this.extraAlerts.push(x); if (/dañado/.test(x)) { this.fire.mcu = x; fails.push(x.replace(/ Pulsa «Reiniciar».*$/, '')); } } }); }
+    if (fails.length && !this.crash) this.failure(fails);
     const n = sim.alerts.length + this.extraAlerts.length; if (n !== this.lastAlerts) { this.lastAlerts = n; this.root.querySelector('#bwarns').innerHTML = this.warnHTML(); this.onChange && this.onChange('alert'); }
   }
   loop(ts) {
@@ -655,7 +663,7 @@ B.Editor = class {
     const sim = this.sim, sel = this.sel === it.id, ix = this.refs[it.id];
     const hlp = it.type === 'IC' ? DSim.IC[it.ic].name + ': ' + DSim.IC[it.ic].desc : (UI.HELP[it.type + '_b'] || UI.HELP[it.type + (it.n || '')] || UI.HELP[it.type] || '');
     const fireMsg = this.fire && this.fire[it.id];
-    const anch = () => { if (it.type === 'IC') return { x: B.hx(it.col) + (DSim.IC[it.ic].n / 2 - 1) * P / 2, y: 168 }; if (it.type === 'D7') return { x: B.hx(it.col) + 2 * P, y: 150 }; const a = pos(it.a), c = pos(it.b); return a && c ? { x: (a.x + c.x) / 2, y: Math.min(a.y, c.y) - 36 } : null; };
+    const anch = () => { if (it.type === 'SENS') { const c = SC().CAT[it.kind], R = B.rowsOf(it); return c ? { x: B.hx(it.col) + c.box.x + c.box.w / 2, y: ROWY[R.lo] + (it.bb === 2 ? B.OFF2 : 0) + c.box.y - 4 } : null; } if (it.type === 'IC') return { x: B.hx(it.col) + (DSim.IC[it.ic].n / 2 - 1) * P / 2, y: 168 }; if (it.type === 'D7') return { x: B.hx(it.col) + 2 * P, y: 150 }; const a = pos(it.a), c = pos(it.b); return a && c ? { x: (a.x + c.x) / 2, y: Math.min(a.y, c.y) - 36 } : null; };
     const dy = it.type !== 'SENS' && COLT.includes(it.type) ? ((R) => (ROWY[R.lo] + ROWY[R.hi]) / 2 - 193)(B.rowsOf(it)) + (it.bb === 2 ? B.OFF2 : 0) : 0, tr = dy ? ` transform="translate(0,${dy})"` : '';
     const G = (inner, extra = '') => { const an = fireMsg && anch(); return `<g data-id="${it.id}" ${extra}${tr}><title>${esc(hlp)}</title>${inner}${an ? B.flame(an.x, an.y, fireMsg) : ''}</g>`; };
     const selr = (x, y, w, h) => sel ? `<rect x="${x - 4}" y="${y - 4}" width="${w + 8}" height="${h + 8}" rx="5" fill="none" stroke="${SAGE}" stroke-dasharray="4 3" stroke-width="1.5"/>` : '';

@@ -206,12 +206,14 @@ class McuCtl {
      queda dañado: deja de leer y de escribir. UNO: máx. absoluto Vcc + 0,5 V (≈ 5,5 V), 40 mA. ESP32-S3: 3,6 V, 40 mA. */
   checkPins(sim) {
     const lim = this.board === 'UNO' ? 5.5 : 3.6, r = [], nm = this.board === 'UNO' ? 'Arduino' : 'ESP32'; this.dead = this.dead || new Set(); this.bad = this.bad || {};
+    if (sim.t < 0.3) return r; /* arranque: el programa aún no ha configurado los pines */
     for (const k in this.idxOf) { if (this.dead.has(k)) continue; const i = this.idxOf[k], n = this.part.pins[i], v = sim.v[n], pp = this.part;
       const cur = pp.pk[i] ? Math.abs(pp.pi[i] - pp.pg[i] * v) : 0; let why = null;
       if (v > lim || v < -0.7) why = `recibe ${v.toFixed(1).replace('.', ',')} V (máximo ${this.board === 'UNO' ? '5' : '3,3'} V)`; else if (cur > 0.04) why = `maneja ${(cur * 1e3).toFixed(0)} mA (máximo 40 mA)`;
       if (!why) { delete this.bad[k]; continue; }
-      if (v > lim && !this.warned.has(k)) { this.warned.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Riesgo de dañar la placa.`); }
-      if (this.bad[k] === undefined) this.bad[k] = sim.t; if (sim.t - this.bad[k] >= 0.5) { this.dead.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Pin dañado: ya no lee ni escribe. Pulsa «Reiniciar» para reponer la placa.`); } }
+      if (this.bad[k] === undefined) this.bad[k] = sim.t;
+      if (v > lim && sim.t - this.bad[k] >= 0.05 && !this.warned.has(k)) { this.warned.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Riesgo de dañar la placa.`); }
+      if (sim.t - this.bad[k] >= 0.5) { this.dead.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Pin dañado: ya no lee ni escribe. Pulsa «Reiniciar» para reponer la placa.`); } }
     return r;
   }
 }
