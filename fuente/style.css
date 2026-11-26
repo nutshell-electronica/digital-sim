@@ -121,3 +121,5 @@ header .brand{cursor:pointer}
 .pal .pgrp{display:block;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--sg,#6A7B6C);margin:8px 2px 3px;border-bottom:1px solid var(--bd,#E2DFD8);padding-bottom:2px}
 .props #sread{font:600 12px Arial,sans-serif;text-align:left;padding:6px 8px;background:#E9EDE8;border:1px solid var(--bd,#E2DFD8);color:var(--tx)}
 .props input[type=range]{width:100%;display:block;margin-top:4px}
+.hm-btn.prim{text-align:center;width:260px;font-size:18px;padding:14px 20px}
+.props #sread{white-space:pre-line}

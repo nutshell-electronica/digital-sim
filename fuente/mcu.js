@@ -25,7 +25,14 @@ M.transpile = function (src) {
   code = code.replace(/\bDHT(?:_Unified)?\s+(\w+)\s*\(([^;]*)\)\s*;/g, (m, n, a) => `const ${n} = __dht(${a});`);
   code = code.replace(/\bOneWire\s+(\w+)\s*\(([^;]*)\)\s*;/g, (m, n, a) => `const ${n} = __ow(${a});`);
   code = code.replace(/\bDallasTemperature\s+(\w+)\s*\(\s*&?\s*(\w+)\s*\)\s*;/g, (m, n, o) => `const ${n} = __dallas(${o});`);
-  code = code.replace(/\bSSD1306\w*\s+(\w+)\s*\([^;]*\)\s*;/g, (m, n) => { warn.push('Pantalla OLED no simulada: usa LiquidCrystal.'); return `const ${n} = __lcd();`; });
+  code = code.replace(/\bAdafruit_SSD1306\s+(\w+)\s*\([^;]*\)\s*;/g, (m, n) => `const ${n} = __oled();`);
+  code = code.replace(/\bAdafruit_BMP280\s+(\w+)\s*(?:\([^;]*\))?\s*;/g, (m, n) => `const ${n} = __bmp();`);
+  code = code.replace(/\bAdafruit_MPU6050\s+(\w+)\s*;/g, (m, n) => `const ${n} = __mpu();`);
+  code = code.replace(/\bsensors_event_t\s+([^;]+);/g, (m, l) => 'let ' + l.split(',').map(x => x.trim() + ' = __ev()').join(', ') + ';');
+  code = code.replace(/\b(\w+)\.getEvent\s*\(([^)]*)\)/g, (m, o, a) => `${o}.getEvent(${a.replace(/&/g, '')})`);
+  code = code.replace(/\bAdafruit_MCP3008\s+(\w+)\s*;/g, (m, n) => `const ${n} = __mcp();`);
+  code = code.replace(/\bMCP3008\s+(\w+)\s*\(([^;]*)\)\s*;/g, (m, n, a) => `const ${n} = __mcp(${a});`);
+  code = code.replace(/\bAdafruit_\w+::\w+/g, '0');
   // arrays
   code = code.replace(new RegExp(`${QUAL}(${TYPES})\\s+(\\w+)\\s*\\[\\s*(\\w*)\\s*\\]\\s*=\\s*\\{([^}]*)\\}\\s*;`, 'g'), (m, t, n, sz, init) => `let ${n} = [${init}];`);
   code = code.replace(new RegExp(`${QUAL}(${TYPES})\\s+(\\w+)\\s*\\[\\s*(\\w+)\\s*\\]\\s*;`, 'g'), (m, t, n, sz) => t === 'char' ? `let ${n} = "";` : `let ${n} = new Array(${sz}).fill(0);`);
@@ -44,6 +51,7 @@ M.transpile = function (src) {
   code = out + code.slice(last);
   // asignaciones a enteros: trunca
   if (intVars.size) { const asg = new RegExp(`(^|[;{}\\n]\\s*|\\(\\s*)(${[...intVars].join('|')})\\s*=(?!=)`, 'g'); let o2 = '', l2 = 0, m2; while ((m2 = asg.exec(code))) { const start = m2.index + m2[0].length, e = exprEnd(code, start); if (/\blet\s*$/.test(code.slice(0, m2.index + m2[1].length))) continue; o2 += code.slice(l2, start) + ' __i(' + code.slice(start, e) + ')'; l2 = e; asg.lastIndex = e; } code = o2 + code.slice(l2); }
+  code = code.replace(/\b(\d+\.\d*|\.\d+)[fF]\b/g, '$1').replace(/\b(\d+)[uU]?[lL]{1,2}\b/g, '$1').replace(/\b(\d+)[uU]\b/g, '$1');
   code = code.replace(/\bsprintf\s*\(\s*(\w+)\s*,/g, '$1 = __sprintf(').replace(/\bsnprintf\s*\(\s*(\w+)\s*,[^,]+,/g, '$1 = __sprintf(');
   code = code.replace(/\bsizeof\s*\(\s*(\w+)\s*\)\s*\/\s*sizeof\s*\(\s*\w+\s*\[\s*0\s*\]\s*\)/g, '$1.length').replace(/\bstrlen\s*\(/g, '__strlen(').replace(/\.length\s*\(\s*\)/g, '.length');
   code = code.replace(/\((?:unsigned\s+)?(?:int|long|short|byte|uint8_t|uint16_t|uint32_t|char)\)\s*\(/g, '__i(').replace(/\((?:unsigned\s+)?(?:int|long|short|byte|uint8_t|uint16_t|uint32_t|char)\)\s*(\w+)/g, '__i($1)').replace(/\((?:float|double)\)\s*/g, '');
@@ -70,7 +78,7 @@ function sprintf(fmt, ...a) { let i = 0; return String(fmt).replace(/%([-0 +]*)(
 class McuCtl {
   constructor(boardName, part, src, o = {}) {
     this.board = boardName; this.part = part; this.vdd = part.vdd; this.names = part.names; this.src = src; this.serial = ''; this.t0 = 0;
-    this.pm = {}; this.out = {}; this.pwm = {}; this.tn = {}; this.sv = {}; this.gl = {}; this.lcd = null; this.err = null; this.ledL = 0; this.wake = 0; this.running = true; this.inl = {}; this.warned = new Set();
+    this.pm = {}; this.out = {}; this.pwm = {}; this.tn = {}; this.sv = {}; this.gl = {}; this.i2c = boardName === 'UNO' ? { sda: 18, scl: 19 } : { sda: 8, scl: 9 }; this.spi = boardName === 'UNO' ? { sck: 13, miso: 12, mosi: 11, cs: 10 } : { sck: 12, miso: 13, mosi: 11, cs: 10 }; this.wtx = []; this.wrx = []; this.lcd = null; this.err = null; this.ledL = 0; this.wake = 0; this.running = true; this.inl = {}; this.warned = new Set();
     this.idxOf = {}; this.names.forEach((n, i) => { const k = Board.pinNumber(boardName, n); if (k !== null) this.idxOf[k] = i; });
     this.onSerial = o.onSerial;
     try { this.compile(); } catch (e) { this.err = 'Error al compilar: ' + e.message; this.running = false; }
@@ -88,6 +96,37 @@ class McuCtl {
       map: (x, a, b, c, d) => Math.trunc((x - a) * (d - c) / (b - a) + c), constrain: (x, a, b) => Math.min(b, Math.max(a, x)), min: Math.min, max: Math.max, abs: Math.abs, sq: (x) => x * x, sqrt: Math.sqrt, pow: Math.pow, sin: Math.sin, cos: Math.cos, floor: Math.floor, ceil: Math.ceil, round: Math.round, log: Math.log, log10: Math.log10, exp: Math.exp, tan: Math.tan, atan: Math.atan, atan2: Math.atan2, asin: Math.asin, acos: Math.acos, fabs: Math.abs, NULL: 0,
       bitRead: (x, n) => (x >> n) & 1, bitWrite: (x, n, b) => b ? x | (1 << n) : x & ~(1 << n), lowByte: (x) => x & 255, highByte: (x) => (x >> 8) & 255, tone: (p, f, d) => { me.tn[p] = { f, until: d ? me.t + d / 1000 : Infinity }; me.pm[p] = 1; delete me.pwm[p]; }, noTone: (p) => { delete me.tn[p]; me.out[p] = 0; },
       isnan: (x) => Number.isNaN(x), NAN: NaN, DHT11: 11, DHT22: 22, DHT21: 21, INFINITY: Infinity,
+      F: (x) => x, SSD1306_SWITCHCAPVCC: 2, SSD1306_EXTERNALVCC: 1, SSD1306_WHITE: 1, SSD1306_BLACK: 0, SSD1306_INVERSE: 2, WHITE: 1, BLACK: 0, INVERSE: 2, MSBFIRST: 1, LSBFIRST: 0, SPI_MODE0: 0, SPI_MODE1: 1, SPI_MODE2: 2, SPI_MODE3: 3,
+      MPU6050_RANGE_2_G: 0, MPU6050_RANGE_4_G: 1, MPU6050_RANGE_8_G: 2, MPU6050_RANGE_16_G: 3, MPU6050_RANGE_250_DEG: 0, MPU6050_RANGE_500_DEG: 1, MPU6050_RANGE_1000_DEG: 2, MPU6050_RANGE_2000_DEG: 3, MPU6050_BAND_260_HZ: 0, MPU6050_BAND_184_HZ: 1, MPU6050_BAND_94_HZ: 2, MPU6050_BAND_44_HZ: 3, MPU6050_BAND_21_HZ: 4, MPU6050_BAND_10_HZ: 5, MPU6050_BAND_5_HZ: 6,
+      SPISettings: () => 0, __ev: () => ({ acceleration: { x: 0, y: 0, z: 0 }, gyro: { x: 0, y: 0, z: 0 }, temperature: 0 }),
+      Wire: { begin: (a, b) => { if (a !== undefined && b !== undefined) { me.i2c.sda = a; me.i2c.scl = b; } }, setClock: () => { }, setPins: (a, b) => { me.i2c.sda = a; me.i2c.scl = b; }, beginTransmission: (a) => { me.wa = a; me.wtx = []; },
+        write: (x) => { if (Array.isArray(x)) me.wtx.push(...x.map(v => v & 255)); else if (typeof x === 'string') for (const ch of x) me.wtx.push(ch.charCodeAt(0) & 255); else me.wtx.push(x & 255); return 1; },
+        endTransmission: () => { const d = me.devAt(me.wa); if (!d) return 2; me.devWrite(d, me.wtx); return 0; }, requestFrom: (a, n) => { const d = me.devAt(a); me.wrx = []; if (!d) return 0; me.wrx = me.devRead(d, n); return me.wrx.length; },
+        available: () => me.wrx.length, read: () => me.wrx.length ? me.wrx.shift() : -1, peek: () => me.wrx.length ? me.wrx[0] : -1, flush: () => { } },
+      SPI: { begin: (a, b, c) => { if (a !== undefined && b !== undefined) me.spi = { sck: a, miso: b, mosi: c }; }, end: () => { }, beginTransaction: () => { }, endTransaction: () => { }, setClockDivider: () => { }, setBitOrder: () => { }, setDataMode: () => { }, setFrequency: () => { },
+        transfer: (b) => { if (Array.isArray(b)) { for (let i = 0; i < b.length; i++) b[i] = me.spiXfer(b[i]); return 0; } return me.spiXfer(b); }, transfer16: (w) => (me.spiXfer((w >> 8) & 255) << 8) | me.spiXfer(w & 255) },
+      __bmp: () => { let addr = 0x77, ok = false; const dev = () => me.devAt(addr); return { begin: (a) => { if (typeof a === 'number') addr = a; ok = !!dev(); return ok; }, setSampling: () => { },
+          readTemperature: () => { const d = dev(); return ok && d ? Math.round(Math.max(-40, Math.min(85, d.stim.temp)) * 100) / 100 : NaN; }, readPressure: () => { const d = dev(); return ok && d ? Math.round(Math.max(300, Math.min(1100, d.stim.pres)) * 100 * 4) / 4 : NaN; },
+          readAltitude: (sl) => { const d = dev(); if (!ok || !d) return NaN; const p = Math.max(300, Math.min(1100, d.stim.pres)); return 44330 * (1 - Math.pow(p / (sl === undefined ? 1013.25 : sl), 1 / 5.255)); }, takeForcedMeasurement: () => true }; },
+      __mpu: () => { const dev = () => me.devAt(0x68) || me.devAt(0x69); return { begin: (a) => { const d = a ? me.devAt(a) : dev(); if (!d) return false; me.mpuInit(d); d.st.regs[0x6B] = 0; d.st.sleep = false; return true; },
+          setAccelerometerRange: (r) => { const d = dev(); if (d) { me.mpuInit(d); d.st.regs[0x1C] = (r & 3) << 3; } }, setGyroRange: (r) => { const d = dev(); if (d) { me.mpuInit(d); d.st.regs[0x1B] = (r & 3) << 3; } }, setFilterBandwidth: () => { }, setSampleRateDivisor: () => { },
+          getEvent: (a, g, t) => { const d = dev(); if (!d) return false; const r = me.mpuRead(d), G = 9.80665, k = Math.PI / 180; a.acceleration = { x: r.a[0] * G, y: r.a[1] * G, z: r.a[2] * G }; g.gyro = { x: r.g[0] * k, y: r.g[1] * k, z: r.g[2] * k }; t.temperature = r.t; return true; } }; },
+      __oled: () => { const W = 128, H = 64, fb = new Uint8Array(W * H); let cx = 0, cy = 0, ts = 1, col = 1, bg = 0, wrap = true, addr = 0x3C; const dev = () => me.devAt(addr);
+        const px = (x, y, c) => { x = Math.trunc(x); y = Math.trunc(y); if (x < 0 || y < 0 || x >= W || y >= H) return; const q = c === undefined ? col : c; fb[y * W + x] = q === 2 ? 1 - fb[y * W + x] : q ? 1 : 0; };
+        const line = (x0, y0, x1, y1, c) => { x0 = Math.trunc(x0); y0 = Math.trunc(y0); x1 = Math.trunc(x1); y1 = Math.trunc(y1); const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1; let e = dx + dy, n = 0; for (;;) { px(x0, y0, c); if ((x0 === x1 && y0 === y1) || n++ > 400) break; const e2 = 2 * e; if (e2 >= dy) { e += dy; x0 += sx; } if (e2 <= dx) { e += dx; y0 += sy; } } };
+        const fillR = (x, y, w, h, c) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) px(x + i, y + j, c); };
+        const circ = (x0, y0, r, c, fill) => { x0 = Math.trunc(x0); y0 = Math.trunc(y0); r = Math.trunc(r); let x = r, y = 0, e = 1 - r; while (x >= y) { if (fill) { line(x0 - x, y0 + y, x0 + x, y0 + y, c); line(x0 - x, y0 - y, x0 + x, y0 - y, c); line(x0 - y, y0 + x, x0 + y, y0 + x, c); line(x0 - y, y0 - x, x0 + y, y0 - x, c); } else { [[x, y], [y, x], [-x, y], [-y, x], [x, -y], [y, -x], [-x, -y], [-y, -x]].forEach(([a, b]) => px(x0 + a, y0 + b, c)); } y++; if (e < 0) e += 2 * y + 1; else { x--; e += 2 * (y - x) + 1; } } };
+        const putc = (ch) => { if (ch === '\n') { cx = 0; cy += 8 * ts; return; } if (ch === '\r') return; if (wrap && cx + 6 * ts > W) { cx = 0; cy += 8 * ts; } const gl = me.glyph(ch, ts); if (gl) for (let j = 0; j < 8 * ts; j++) for (let i = 0; i < 6 * ts; i++) { if (gl[j * 6 * ts + i]) px(cx + i, cy + j, col); else if (bg !== col) px(cx + i, cy + j, bg); } cx += 6 * ts; };
+        const pr = (x, b) => { for (const ch of me.fmt(x, b)) putc(ch); };
+        return { begin: (v, a) => { if (typeof a === 'number') addr = a; return !!dev(); }, clearDisplay: () => { fb.fill(0); cx = 0; cy = 0; }, display: () => { const d = dev(); if (!d) return; d.st.fb = fb.slice(); d.st.fbv = (d.st.fbv || 0) + 1; },
+          setTextSize: (s) => { ts = Math.max(1, Math.trunc(s)); }, setTextColor: (c, b) => { col = c; bg = b === undefined ? c : b; }, setCursor: (x, y) => { cx = Math.trunc(x); cy = Math.trunc(y); }, setTextWrap: (w) => { wrap = !!w; }, cp437: () => { },
+          print: (x, b) => pr(x, b), println: (x, b) => { if (x !== undefined) pr(x, b); putc('\n'); }, write: (c) => putc(typeof c === 'number' ? String.fromCharCode(c) : c), width: () => W, height: () => H, getCursorX: () => cx, getCursorY: () => cy,
+          drawPixel: (x, y, c) => px(x, y, c), drawLine: (a, b, c, d, e) => line(a, b, c, d, e), drawFastHLine: (x, y, w, c) => line(x, y, x + w - 1, y, c), drawFastVLine: (x, y, h, c) => line(x, y, x, y + h - 1, c),
+          drawRect: (x, y, w, h, c) => { line(x, y, x + w - 1, y, c); line(x, y + h - 1, x + w - 1, y + h - 1, c); line(x, y, x, y + h - 1, c); line(x + w - 1, y, x + w - 1, y + h - 1, c); }, fillRect: (x, y, w, h, c) => fillR(x, y, w, h, c), drawRoundRect: (x, y, w, h, r, c) => { line(x, y, x + w - 1, y, c); line(x, y + h - 1, x + w - 1, y + h - 1, c); line(x, y, x, y + h - 1, c); line(x + w - 1, y, x + w - 1, y + h - 1, c); }, fillRoundRect: (x, y, w, h, r, c) => fillR(x, y, w, h, c),
+          drawCircle: (x, y, r, c) => circ(x, y, r, c, false), fillCircle: (x, y, r, c) => circ(x, y, r, c, true), drawTriangle: (a, b, c, d, e, f, g) => { line(a, b, c, d, g); line(c, d, e, f, g); line(e, f, a, b, g); }, fillScreen: (c) => fb.fill(c ? 1 : 0),
+          drawBitmap: (x, y, bm, w, h, c) => { const bw = (w + 7) >> 3; for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if ((bm[j * bw + (i >> 3)] >> (7 - (i & 7))) & 1) px(x + i, y + j, c); }, invertDisplay: () => { }, dim: () => { }, ssd1306_command: () => { }, startscrollright: () => { }, stopscroll: () => { } }; },
+      __mcp: (a, b, c, d) => { let cs = me.spi.cs, sck = me.spi.sck, miso = me.spi.miso, mosi = me.spi.mosi; if (d !== undefined) { sck = a; miso = b; mosi = c; cs = d; } else if (a !== undefined) cs = a; const dev = () => me.mcpAt(sck, miso, mosi, cs);
+        return { begin: (p, q, r, t) => { if (t !== undefined) { sck = p; mosi = q; miso = r; cs = t; } else if (p !== undefined) cs = p; return !!dev(); }, readADC: (ch) => me.mcpVal(dev(), ch), read: (ch) => me.mcpVal(dev(), ch), analogRead: (ch) => me.mcpVal(dev(), ch), maxValue: () => 1023 }; },
       pulseIn: function* (p, lvl, to) { const lim = (to === undefined ? 1e6 : to) / 1e6, t0 = me.t, L = lvl ? 1 : 0, st = () => me.sim ? me.sim.dt : 5e-5;
         while ((me.inl[p] ? 1 : 0) === L) { if (me.t - t0 > lim) return 0; yield st(); }
         while ((me.inl[p] ? 1 : 0) !== L) { if (me.t - t0 > lim) return 0; yield st(); }
@@ -115,14 +154,38 @@ class McuCtl {
     const prog = new Function('R', body)(R);
     this.gen = (function* () { yield* prog.setup(); for (;;) { yield* prog.loop(); yield 1e-5; } })();
   }
+  nodeOf(p) { const k = this.idxOf[p]; return k === undefined ? null : this.part.pins[k]; }
+  fmt(x, b) { return typeof x === 'number' ? (Number.isNaN(x) ? 'nan' : !isFinite(x) ? 'inf' : Number.isInteger(x) && (b === 2 || b === 8 || b === 16) ? Math.trunc(x).toString(b).toUpperCase() : b !== undefined && b !== 10 ? x.toFixed(Math.min(b, 8)) : fmtNum(x)) : String(x); }
+  devAt(addr) { if (!this.sim) return null; const ns = this.nodeOf(this.i2c.sda), nc = this.nodeOf(this.i2c.scl); if (ns == null || nc == null) return null; const CAT = root.SensCat && root.SensCat.CAT;
+    for (const q of this.sim.parts) { if (q.type !== 'SENS') continue; const c = CAT[q.kind]; if (!c || !c.i2c) continue; if (q.pins[c.i2c.sda] === ns && q.pins[c.i2c.scl] === nc && q.st.ok && q.st.addr === addr) return q; } return null; }
+  mpuInit(d) { if (!d.st.regs) { d.st.regs = {}; d.st.regs[0x75] = 0x68; d.st.regs[0x6B] = 0x40; d.st.sleep = true; } }
+  mpuRead(d) { this.mpuInit(d); const R = d.st.regs, q = d.stim, k = Math.PI / 180, ar = [2, 4, 8, 16][(R[0x1C] >> 3) & 3] || 2, gr = [250, 500, 1000, 2000][(R[0x1B] >> 3) & 3] || 250, c = (x, m) => Math.max(-m, Math.min(m, x));
+    const a = [Math.sin(q.pitch * k), -Math.sin(q.roll * k) * Math.cos(q.pitch * k), Math.cos(q.roll * k) * Math.cos(q.pitch * k)].map(x => c(x, ar)), g = [q.gx, q.gy, q.gz].map(x => c(x, gr));
+    if (d.st.sleep) return { a: [0, 0, 0], g: [0, 0, 0], t: 0 }; return { a, g, t: q.temp, ar, gr }; }
+  devWrite(d, bytes) { if (!bytes.length) return; d.st.ptr = bytes[0]; if (d.kind === 'MPU6050') { this.mpuInit(d); for (let i = 1; i < bytes.length; i++) { d.st.regs[d.st.ptr] = bytes[i]; if (d.st.ptr === 0x6B) d.st.sleep = !!(bytes[i] & 0x40); d.st.ptr++; } } }
+  devRead(d, n) { const out = [], i16 = (v) => { v = Math.max(-32768, Math.min(32767, Math.round(v))); return v & 0xFFFF; }; let p = d.st.ptr || 0;
+    for (let i = 0; i < n; i++, p++) { let v = 0; if (d.kind === 'MPU6050') { this.mpuInit(d); if (p >= 0x3B && p <= 0x48) { const r = this.mpuRead(d), al = d.st.sleep ? 1 : [16384, 8192, 4096, 2048][(d.st.regs[0x1C] >> 3) & 3], gl = d.st.sleep ? 1 : [131, 65.5, 32.8, 16.4][(d.st.regs[0x1B] >> 3) & 3];
+          const w = [i16(r.a[0] * al), i16(r.a[1] * al), i16(r.a[2] * al), i16(d.st.sleep ? 0 : (r.t - 36.53) * 340), i16(r.g[0] * gl), i16(r.g[1] * gl), i16(r.g[2] * gl)], j = p - 0x3B; v = (j & 1) ? w[j >> 1] & 255 : w[j >> 1] >> 8; } else v = d.st.regs[p] || 0; }
+      else if (d.kind === 'BMP280') v = p === 0xD0 ? 0x58 : 0; out.push(v); } d.st.ptr = p; return out; }
+  mcpAt(sck, miso, mosi, cs) { if (!this.sim) return null; const nk = this.nodeOf(sck), nm = this.nodeOf(miso), no = this.nodeOf(mosi), nc = this.nodeOf(cs); if (nk == null || nc == null) return null;
+    for (const q of this.sim.parts) if (q.type === 'SENS' && q.kind === 'MCP3008' && q.st.ok && q.pins[12] === nk && q.pins[9] === nc && q.pins[11] === nm && q.pins[10] === no) return q; return null; }
+  mcpVal(d, ch) { if (!d || ch < 0 || ch > 7) return 0; const v = this.sim.vp, n = d.pins[ch], vr = v[d.pins[14]] - v[d.pins[13]]; if (vr < 0.3) return 0; return Math.max(0, Math.min(1023, Math.floor(((n == null ? 0 : v[n]) - v[d.pins[13]]) / vr * 1024))); }
+  spiXfer(b) { const nk = this.nodeOf(this.spi.sck), nm = this.nodeOf(this.spi.miso), no = this.nodeOf(this.spi.mosi); if (!this.sim || nk == null) return 0;
+    for (const q of this.sim.parts) { if (q.type !== 'SENS' || q.kind !== 'MCP3008' || !q.st.ok || q.pins[12] !== nk || q.pins[11] !== nm || q.pins[10] !== no) continue;
+      const cn = q.pins[9]; let sel = false; for (const k in this.idxOf) if (this.part.pins[this.idxOf[k]] === cn && this.pm[k] === 1 && !this.out[k] && this.pwm[k] === undefined) sel = true;
+      if (!sel) { q.st.n = 0; continue; } const st = q.st; st.n = st.n || 0; let r = 0;
+      if (st.n === 0) { st.n = 1; r = 0; } else if (st.n === 1) { st.ch = (b >> 4) & 7; st.val = this.mcpVal(q, st.ch); st.n = 2; r = (st.val >> 8) & 3; } else { st.n = 0; r = st.val & 255; } return r; } return 0; }
+  glyph(ch, ts) { try { const key = ch + ts; this._gl = this._gl || {}; if (this._gl[key]) return this._gl[key]; if (typeof document === 'undefined') return null; const w = 6 * ts, h = 8 * ts, c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d', { willReadFrequently: true });
+      x.fillStyle = '#fff'; x.font = `${10 * ts}px "DejaVu Sans Mono","Courier New",monospace`; x.textBaseline = 'alphabetic'; x.fillText(ch, 0, 7 * ts); const dt = x.getImageData(0, 0, w, h).data, o = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) o[i] = dt[i * 4 + 3] > 110 ? 1 : 0; return (this._gl[key] = o); } catch (e) { return null; } }
   findSens(p) { const k = this.idxOf[p]; if (k === undefined || !this.sim) return null; const n = this.part.pins[k]; if (n == null) return null; for (const q of this.sim.parts) if (q.type === 'SENS') { const i = q.pins.indexOf(n); if (i >= 0) return { p: q, i }; } return null; }
   mkLcd() { const me = this; if (!this.lcd) this.lcd = { cols: 16, rows: 2, buf: [' '.repeat(16), ' '.repeat(16)], cx: 0, cy: 0, on: true };
     const L = this.lcd, put = (s) => { for (const ch of String(s)) { if (L.cy >= L.rows) break; const r = L.buf[L.cy]; if (L.cx < L.cols) L.buf[L.cy] = r.slice(0, L.cx) + ch + r.slice(L.cx + 1); L.cx++; } };
     return { begin: (c, r) => { L.cols = c || 16; L.rows = r || 2; L.buf = Array.from({ length: L.rows }, () => ' '.repeat(L.cols)); }, setCursor: (c, r) => { L.cx = Math.trunc(c); L.cy = Math.trunc(r); }, print: (x, b) => put(b ? Number(x).toString(b).toUpperCase() : fmtNum2(x)), println: (x) => { put(fmtNum2(x)); L.cy++; L.cx = 0; }, write: (x) => put(typeof x === 'number' ? String.fromCharCode(x) : x), clear: () => { L.buf = L.buf.map(() => ' '.repeat(L.cols)); L.cx = 0; L.cy = 0; }, home: () => { L.cx = 0; L.cy = 0; }, backlight: () => { L.on = true; }, noBacklight: () => { L.on = false; }, init: () => { }, createChar: () => { }, display: () => { }, noDisplay: () => { }, cursor: () => { }, noCursor: () => { }, blink: () => { }, noBlink: () => { } }; }
-  sprint(x, b) { const s = typeof x === 'number' ? (Number.isNaN(x) ? 'nan' : !isFinite(x) ? 'inf' : Number.isInteger(x) && (b === 2 || b === 8 || b === 16) ? Math.trunc(x).toString(b).toUpperCase() : b !== undefined && b !== 10 ? x.toFixed(Math.min(b, 8)) : fmtNum(x)) : String(x); this.serial += s; if (this.serial.length > 20000) this.serial = this.serial.slice(-15000); this.onSerial && this.onSerial(); }
+  sprint(x, b) { const s = this.fmt(x, b); this.serial += s; if (this.serial.length > 20000) this.serial = this.serial.slice(-15000); this.onSerial && this.onSerial(); }
   /* llamado por el motor en cada paso */
   sample(levels, t, sim) {
     this.t = t - this.t0; this.sim = sim;
+    if (!this.booted) { this.booted = true; if (sim.parts.some(q => q.type === 'SENS')) this.wake = Math.max(this.wake, 0.1); }
     for (const k in this.idxOf) this.inl[k] = levels[this.idxOf[k]];
     if (this.running && this.gen) {
       let budget = 4000;
@@ -634,6 +697,82 @@ void loop() {
     delay(30);
   }
 }` },
+  { id: 'i2cscan', title: '16 · Escáner I²C', code: (p) => `// Muestra las direcciones I²C que responden (SDA/SCL del bus por defecto).
+#include <Wire.h>
+void setup() { Wire.begin(); Serial.begin(9600); }
+void loop() {
+  int n = 0;
+  for (byte a = 1; a < 127; a++) {
+    Wire.beginTransmission(a);
+    if (Wire.endTransmission() == 0) { Serial.print("Dispositivo en 0x"); if (a < 16) Serial.print("0"); Serial.println(a, HEX); n++; }
+  }
+  Serial.print(n); Serial.println(" encontrados");
+  delay(5000);
+}
+` },
+  { id: 'bmp280', title: '17 · BMP280 temperatura y presión (I²C)', code: (p) => `// BMP280: VCC 3,3 V, GND, SDA y SCL al bus I²C. SDO a GND = 0x76.
+#include <Wire.h>
+#include <Adafruit_BMP280.h>
+Adafruit_BMP280 bmp;
+void setup() {
+  Serial.begin(9600);
+  if (!bmp.begin(0x76)) { Serial.println("BMP280 no encontrado"); while (1); }
+}
+void loop() {
+  Serial.print("T = "); Serial.print(bmp.readTemperature());
+  Serial.print(" C  P = "); Serial.print(bmp.readPressure() / 100.0F);
+  Serial.print(" hPa  Alt = "); Serial.println(bmp.readAltitude(1013.25));
+  delay(1000);
+}
+` },
+  { id: 'mpu6050', title: '18 · MPU6050 acelerómetro y giroscopio (I²C)', code: (p) => `// MPU6050 (dirección 0x68 con AD0 a GND).
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+Adafruit_MPU6050 mpu;
+void setup() {
+  Serial.begin(9600);
+  if (!mpu.begin()) { Serial.println("MPU6050 no encontrado"); while (1); }
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+}
+void loop() {
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+  Serial.print("ax="); Serial.print(a.acceleration.x, 2);
+  Serial.print(" ay="); Serial.print(a.acceleration.y, 2);
+  Serial.print(" az="); Serial.print(a.acceleration.z, 2);
+  Serial.print(" gz="); Serial.print(g.gyro.z, 2);
+  Serial.print(" T="); Serial.println(temp.temperature, 1);
+  delay(500);
+}
+` },
+  { id: 'oled', title: '19 · Pantalla OLED SSD1306 128×64 (I²C)', code: (p) => `#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+Adafruit_SSD1306 display(128, 64, &Wire, -1);
+void setup() {
+  Serial.begin(9600);
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { Serial.println("SSD1306 no encontrada"); while (1); }
+  display.clearDisplay();
+  display.setTextSize(2); display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0); display.println("Hola");
+  display.setTextSize(1); display.print("T = "); display.print(23.5, 1);
+  display.drawRect(0, 40, 60, 20, SSD1306_WHITE);
+  display.fillCircle(100, 50, 10, SSD1306_WHITE);
+  display.display();
+}
+void loop() {}
+` },
+  { id: 'mcp3008', title: '20 · MCP3008 ADC de 8 canales (SPI)', code: (p) => `// MCP3008: CLK, DOUT (MISO), DIN (MOSI) y CS a los pines SPI; VDD y VREF a 5 V.
+#include <SPI.h>
+#include <Adafruit_MCP3008.h>
+Adafruit_MCP3008 adc;
+void setup() { Serial.begin(9600); adc.begin(${p.B}); }
+void loop() {
+  for (int c = 0; c < 8; c++) { Serial.print(adc.readADC(c)); Serial.print(" "); }
+  Serial.println();
+  delay(500);
+}
+` }
 ];
 M.exampleCode = (id, board) => { const e = M.EXAMPLE_LIST.find(x => x.id === id); return e ? e.code(EXP[board] || EXP.UNO) : ''; };
 

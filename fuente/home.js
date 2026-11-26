@@ -62,7 +62,7 @@ H.init = function (host, o) {
   host.innerHTML = `<div class="hm"><div class="hm-top">${o.avatar || ''}<span>José Luis Guerrero Marín</span></div><div class="hm-c"><div class="hm-k">Equipos Microprogramables</div><h1>DIGITAL-SIM</h1>
     <p class="hm-s">Tablas de verdad y Karnaugh, esquemas lógicos, protoboard, Arduino / ESP32 y FPGA Alhambra II en un solo simulador.</p>
     <div class="hm-art"><svg viewBox="0 0 962 412" role="img" aria-label="Contador binario de cuatro bits montado en una protoboard, con un display que muestra la cuenta y un analizador lógico que dibuja las señales">${H.svg()}</svg></div>
-    <div class="hm-b"><button class="hm-btn prim" id="hm-free"><b>Modo libre</b><span>Espacio vacío con todas las herramientas</span></button><button class="hm-btn" id="hm-prac"><b>Prácticas EMI</b><span>P1.1 – P10.1, cada una con su enunciado</span></button></div>
+    <div class="hm-b"><button class="hm-btn prim" id="hm-free"><b>Empezar</b></button></div>
     <div class="hm-f" id="hm-cont" hidden><button class="hm-link" id="hm-back">Continuar con el trabajo anterior</button></div></div></div>`;
   const q = (id) => host.querySelector('#' + id), svg = host.querySelector('svg');
   const segEl = {}; ['t', 'u'].forEach(d => 'abcdefg'.split('').forEach(c => segEl[d + c] = q('hm' + d + c)));
@@ -91,7 +91,7 @@ H.init = function (host, o) {
     }
   };
   requestAnimationFrame(frame);
-  q('hm-free').onclick = o.onFree; q('hm-prac').onclick = o.onPrac; q('hm-back').onclick = o.onBack;
+  q('hm-free').onclick = o.onFree; q('hm-back').onclick = o.onBack;
   H.setContinue = (v) => { q('hm-cont').hidden = !v; };
 };
 

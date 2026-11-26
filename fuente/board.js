@@ -14,10 +14,11 @@ const rOfRow = (row) => { if (row === 'e' || row === 'f') return 5; return Math.
 const RAILY = { 'T+': 34, 'T-': 52, 'B-': 332, 'B+': 350 };
 B.hx = (col) => X0 + (col - 1) * P;
 const railX = (k) => X0 + 10 + k * P + Math.floor(k / 5) * 22;
-B.parseKey = (k) => { const a = k.split(':'); if (a[0] === 'h') { const m = a[1].match(/^(\d+)([a-j])$/); return { t: 'h', col: +m[1], row: m[2] }; } if (a[0] === 'r') return { t: 'r', rail: a[1], k: +a[2] }; if (a[0] === 'f') return { t: 'f', x: +a[1], y: +a[2] }; if (a[0] === 's') return { t: 's', name: a.slice(1).join(':') }; return { t: 'i', name: a.slice(1).join(':') }; };
-B.netOf = (k) => { const p = B.parseKey(k); if (p.t === 'h') return 'M' + p.col + (p.row <= 'e' ? 'b' : 't'); if (p.t === 'r') return 'R:' + p.rail; return k; };
-const hole = (col, row) => 'h:' + col + row;
-const keyXY = (k, ctx) => { const p = B.parseKey(k); if (p.t === 'f') return { x: p.x, y: p.y }; if (p.t === 'h') return { x: B.hx(p.col), y: ROWY[p.row] }; if (p.t === 'r') return { x: railX(p.k), y: RAILY[p.rail] }; if (ctx && ctx.sockets && ctx.sockets[k]) return ctx.sockets[k]; if (ctx && ctx.ipins && ctx.ipins[k]) return ctx.ipins[k]; return null; };
+B.OFF2 = 0;
+B.parseKey = (k) => { const a = k.split(':'); if (a[0] === 'h' || a[0] === 'H') { const m = a[1].match(/^(\d+)([a-j])$/); return { t: 'h', col: +m[1], row: m[2], bb: a[0] === 'H' ? 2 : 1 }; } if (a[0] === 'r' || a[0] === 'R2') return { t: 'r', rail: a[1], k: +a[2], bb: a[0] === 'R2' ? 2 : 1 }; if (a[0] === 'f') return { t: 'f', x: +a[1], y: +a[2] }; if (a[0] === 's') return { t: 's', name: a.slice(1).join(':') }; return { t: 'i', name: a.slice(1).join(':') }; };
+B.netOf = (k) => { const p = B.parseKey(k); if (p.t === 'h') return (p.bb === 2 ? 'N' : 'M') + p.col + (p.row <= 'e' ? 'b' : 't'); if (p.t === 'r') return (p.bb === 2 ? 'R2:' : 'R:') + p.rail; return k; };
+const hole = (col, row, bb) => (bb === 2 ? 'H:' : 'h:') + col + row, hole0 = hole, rkey = (r, k, bb) => (bb === 2 ? 'R2:' : 'r:') + r + ':' + k;
+const keyXY = (k, ctx) => { const p = B.parseKey(k); if (p.t === 'f') return { x: p.x, y: p.y }; if (p.t === 'h') return { x: B.hx(p.col), y: ROWY[p.row] + (p.bb === 2 ? B.OFF2 : 0) }; if (p.t === 'r') return { x: railX(p.k), y: RAILY[p.rail] + (p.bb === 2 ? B.OFF2 : 0) }; if (ctx && ctx.sockets && ctx.sockets[k]) return ctx.sockets[k]; if (ctx && ctx.ipins && ctx.ipins[k]) return ctx.ipins[k]; return null; };
 
 /* ---------- placas MCU (sockets) ---------- */
 B.BOARDS = {
@@ -43,9 +44,10 @@ B.PARTS = {
 const dsLinkHTML = (id) => { const h = DSim.dsHref(id); return h ? `<p><a class="dsl" href="${h}" target="_blank" rel="noopener">Hoja de datos ${DSim.dsFile(id)} · ${DSim.dsMaker(id)}</a> <span class="mut">(alldatasheet.es)</span></p>` : ''; };
 B.dsLinkHTML = dsLinkHTML;
 B.flame = (x, y, msg, sc = 1) => `<g transform="translate(${x},${y}) scale(${sc})"><title>${esc('Sobrecarga: ' + msg)}</title><g><animateTransform attributeName="transform" type="scale" values="1 1;0.94 1.1;1.05 .94;1 1" dur=".7s" repeatCount="indefinite" additive="sum"/><path d="M0,-30 C3,-20 13,-16 13,-4 C13,4 7,9 0,9 C-7,9 -13,4 -13,-4 C-13,-11 -8,-15 -6,-21 C-4,-17 -2,-16 0,-15 C1,-21 -1,-25 0,-30Z" fill="#E8671F" stroke="#9c3a0e" stroke-width=".8"/><path d="M0,-12 C3,-7 8,-5 8,1 C8,5 4,8 0,8 C-4,8 -8,5 -8,1 C-8,-3 -3,-5 0,-12Z" fill="#F7C531"/></g></g>`;
-B.newBoard = () => ({ items: [], nid: 1, mb: { on: true, top: 5, bot: 5 }, mcu: null });
+B.newBoard = () => ({ items: [], nid: 1, mb: { on: true, top: 5, bot: 5 }, mcu: null, bb2: false });
 
 B.pinKeys = (it) => { // llaves de hoyos por patilla (índice = nº de patilla - 1)
+  const hole = (c, r) => hole0(c, r, it.bb);
   if (it.type === 'IC') { const d = DSim.IC[it.ic], h = d.n / 2, r = [], R = B.rowsOf(it); for (let k = 1; k <= d.n; k++) r.push(k <= h ? hole(it.col + k - 1, R.lo) : hole(it.col + (d.n - k), R.hi)); return r; }
   return null;
 };
@@ -67,6 +69,7 @@ B.compile = function (board, ctx) {
   }
   board.items.forEach(it => {
     if (it.off && it.col !== undefined) return; /* pieza sacada de la placa: no conecta con nada */
+    const hole = (c, r) => hole0(c, r, it.bb);
     switch (it.type) {
       case 'WIRE': nb.join(N(it.a), N(it.b)); break;
       case 'R': refs[it.id] = push(it, { type: 'R', r: Math.max(Schem.parseVal(it.v) || 1, 1e-3), pinIds: [N(it.a), N(it.b)] }); break;
@@ -78,7 +81,7 @@ B.compile = function (board, ctx) {
       case 'CLK': { const R = B.rowsOf(it); const c = it.col, hz = Math.min(1e5, Math.max(0.01, Schem.parseVal(it.hz) || 1)), du = Math.min(95, Math.max(5, +it.duty || 50)) / 100; refs[it.id] = push(it, { type: 'SRC', mode: 'clock', pwr: true, hz, duty: du, rout: 60, pinIds: [N(hole(c + 1, R.lo)), N(hole(c, R.lo)), N(hole(c + 2, R.lo))] }); break; }
       case 'D7': { const R = B.rowsOf(it); const c = it.col, ks = [hole(c + 3, R.hi), hole(c + 4, R.hi), hole(c + 3, R.lo), hole(c + 1, R.lo), hole(c, R.lo), hole(c + 1, R.hi), hole(c, R.hi), hole(c + 4, R.lo), hole(c + 2, R.lo)];
         nb.join(N(hole(c + 2, R.lo)), N(hole(c + 2, R.hi))); refs[it.id] = push(it, { type: 'DISP7', color: 'red', ca: +it.ca, pinIds: ks.map(N) }); break; }
-      case 'SENS': { const c = SC().CAT[it.kind]; if (!c) break; const R = B.rowsOf(it), ks = c.pins.map(q => N(hole(it.col + q.dx, R.lo)));
+      case 'SENS': { const c = SC().CAT[it.kind]; if (!c) break; const R = B.rowsOf(it), ks = c.pins.map(q => N(hole(it.col + q.dx, q.hi ? R.hi : R.lo)));
         it.stim = Object.assign(SC().defaults(it.kind).stim, it.stim); it.o = Object.assign(SC().defaults(it.kind).o, it.o);
         if (c.rgb) { const ca = it.o.tipo === 'ánodo común', K = ks[1]; refs[it.id] = [['red', ks[0]], ['green', ks[2]], ['blue', ks[3]]].map(([col, k]) => push(it, { type: 'LED', color: col, pinIds: ca ? [K, k] : [k, K] })); }
         else refs[it.id] = push(it, { type: 'SENS', kind: it.kind, stim: it.stim, o: it.o, label: c.name, pinIds: ks }); break; }
@@ -137,19 +140,24 @@ B.Editor = class {
   buildPalette() {
     const el = this.root.querySelector('#bpal'), ics = Object.values(DSim.IC).filter(d => d.fam !== 'ID' || d.analog === '555');
     const btn = (k, t, d) => `<button class="pi" draggable="true" data-t="${k}" title="${esc(d || UI.HELP[k.split(':')[0] + '_b'] || UI.HELP[k.split(':')[0]] || t)}">${UI.boardThumb(k)}<span>${esc(t)}</span></button>`;
-    el.innerHTML = `<details open><summary>Componentes</summary>${btn('R', 'Resistencia')}${btn('LED:red', 'LED rojo')}${btn('LED:green', 'LED verde')}${btn('LED:yellow', 'LED amarillo')}${btn('C', 'Condensador')}${btn('PUSH', 'Pulsador')}${btn('CLK', 'Generador de reloj')}${btn('DIPSW:4', 'Microinterruptor 4')}${btn('DIPSW:8', 'Microinterruptor 8')}${btn('DIPSW:10', 'Microinterruptor 10')}${btn('D7:0', 'Display 7 seg cátodo común')}${btn('D7:1', 'Display 7 seg ánodo común')}</details>
-    <details open><summary>Cables</summary>${UI.WIRECOLORS.map(c => btn('WIRE:' + c[0], 'Cable ' + c[1])).join('')}</details>
-    <details open><summary>Integrados</summary>${ics.map(d => btn('IC:' + d.id, d.name, d.desc)).join('')}</details>
-    <details open><summary>Instrumentos</summary>${btn('DMM', 'Multímetro')}${btn('LP', 'Sonda lógica')}${btn('LA', 'Analizador lógico')}</details>
-    <details open><summary>Alimentación y placas</summary>${btn('MB102', 'Fuente MB102 (3,3/5 V)')}${btn('MCU:UNO', 'Arduino UNO')}${btn('MCU:ESP32', 'ESP32-S3 DevKitC-1')}${btn('MCU:none', 'Quitar placa MCU')}</details>
+    el.innerHTML = `<details><summary>Componentes</summary>${btn('R', 'Resistencia')}${btn('LED:red', 'LED rojo')}${btn('LED:green', 'LED verde')}${btn('LED:yellow', 'LED amarillo')}${btn('C', 'Condensador')}${btn('PUSH', 'Pulsador')}${btn('CLK', 'Generador de reloj')}${btn('DIPSW:4', 'Microinterruptor 4')}${btn('DIPSW:8', 'Microinterruptor 8')}${btn('DIPSW:10', 'Microinterruptor 10')}${btn('D7:0', 'Display 7 seg cátodo común')}${btn('D7:1', 'Display 7 seg ánodo común')}</details>
+    <details><summary>Cables</summary>${UI.WIRECOLORS.map(c => btn('WIRE:' + c[0], 'Cable ' + c[1])).join('')}</details>
+    <details><summary>Integrados</summary>${ics.map(d => btn('IC:' + d.id, d.name, d.desc)).join('')}</details>
+    <details><summary>Instrumentos</summary>${btn('DMM', 'Multímetro')}${btn('LP', 'Sonda lógica')}${btn('LA', 'Analizador lógico')}</details>
+    <details><summary>Alimentación y placas</summary>${btn('MB102', 'Fuente MB102 (3,3/5 V)')}${btn('MCU:UNO', 'Arduino UNO')}${btn('MCU:ESP32', 'ESP32-S3 DevKitC-1')}${btn('MCU:none', 'Quitar placa MCU')}<button class="pi" data-t="BB2" title="Añade (o quita) una segunda protoboard debajo, en paralelo. Sus carriles no tienen alimentación: llévala tú con cables."><svg class="th" viewBox="0 0 44 36" width="44" height="36"><rect x="3" y="3" width="38" height="13" rx="2" fill="#EFEDE6" stroke="#8a877f"/><rect x="3" y="20" width="38" height="13" rx="2" fill="#EFEDE6" stroke="#B85D34" stroke-width="1.6"/><path d="M8 7h28M8 11h28M8 24h28M8 28h28" stroke="#8a877f" stroke-dasharray="1.5 2.5"/></svg><span>Protoboard 2 (debajo)</span></button></details>
     <details><summary>Sensores y actuadores</summary>${['Sensores', 'Actuadores'].map(g => `<div class="pgrp">${g}</div>` + SC().KINDS.filter(k => SC().CAT[k].group === g).map(k => `<button class="pi" draggable="true" data-t="SENS:${k}" title="${esc(SC().CAT[k].desc)}">${SC().thumb(k)}<span>${esc(SC().CAT[k].name)}</span></button>`).join('')).join('')}</details>`;
     el.addEventListener('click', e => { const b = e.target.closest('.pi'); if (!b) return; const t = b.dataset.t;
       if (t.startsWith('MCU:')) { const n = t.slice(4); this.board.mcu = n === 'none' ? null : { board: n, code: this.board.mcu && this.board.mcu.code }; this.sel = this.board.mcu ? 'mcu' : null; this.changed(); this.onChange && this.onChange('mcu'); return; }
+      if (t === 'BB2') { this.toggleBB2(); return; }
       if (t === 'MB102') { this.board.mb.on = !this.board.mb.on; this.changed(); this.hint(this.board.mb.on ? 'Fuente MB102 conectada a los carriles.' : 'Fuente desconectada.'); return; }
       this.tool = t; this.pend = { pts: [] }; el.querySelectorAll('.pi').forEach(x => x.classList.toggle('on', x === b));
       const [ty] = t.split(':'); this.hint({ IC: 'Haz clic en el agujero de la pata 1 (abajo-izquierda); el integrado se monta a caballo del canal central.', R: 'Clic en un extremo y luego en el otro.', LED: 'Primer clic = ánodo (pata larga), segundo = cátodo.', C: 'Primer clic = (+), segundo = (−).', WIRE: 'Clic en el origen y luego en el destino (agujeros, carriles o pines de la placa).', LA: 'Haz clic en 8 agujeros (canal 1 a 8). Esc termina antes.', DMM: 'Primer clic = punta roja, segundo = punta negra.', DMMA: 'Primer clic = punta roja, segundo = negra. Pon el amperímetro EN SERIE.', LP: 'Clic en el agujero a medir.' }[ty] || 'Haz clic en el agujero donde va la pieza.'); });
   }
-  fit() { const r = this.svg.getBoundingClientRect(), w = r.width; if (!w) return; this.view.k = Math.max(1, (B.hx(COLS) + 300) / w, (this.board.mcu ? 880 : 600) / r.height); this.view.x = -230; this.view.y = 0; this.fitted = true; this.dirty = true; }
+  toggleBB2() { const b = this.board, ks = ['a', 'b', 'tip', 'red', 'black', 'gnd'], on2 = (k) => typeof k === 'string' && (k.startsWith('H:') || k.startsWith('R2:'));
+    if (!b.bb2) { b.bb2 = true; this.upd2(); this.hint('Segunda protoboard añadida debajo. Sus carriles no tienen alimentación: llévala con cables desde la fuente o desde los carriles de la primera.'); }
+    else { const bad = (i) => i.bb === 2 || ks.some(q => on2(i[q])) || (i.ch || []).some(on2); const n = b.items.filter(bad).length; if (n && !confirm(`Quitar la segunda protoboard eliminará ${n} elemento(s) montado(s) en ella. ¿Continuar?`)) return; b.items = b.items.filter(i => !bad(i)); b.bb2 = false; this.upd2(); this.sel = null; this.setMsel(null); this.hint('Segunda protoboard quitada.'); }
+    this.fit(); this.changed(); }
+  fit() { const r = this.svg.getBoundingClientRect(), w = r.width; if (!w) return; this.view.k = Math.max(1, (B.hx(COLS) + 300) / w, (this.upd2() ? B.OFF2 + 400 : this.board.mcu ? 880 : 600) / r.height); this.view.x = -230; this.view.y = 0; this.fitted = true; this.dirty = true; }
   hint(t) { this.root.querySelector('#bhint').textContent = t; }
   rotateSel() {
     const it = this.board.items.find(i => i.id === this.sel); if (!it) return;
@@ -173,38 +181,45 @@ B.Editor = class {
   }
   toDoc(e) { const r = this.svg.getBoundingClientRect(); return { x: this.view.x + (e.clientX - r.left) * this.view.k, y: this.view.y - 40 + (e.clientY - r.top) * this.view.k }; }
   geom() { // sockets y pines de instrumentos
+    this.upd2();
     const ctx = { sockets: {}, ipins: {} };
     if (this.board.mcu) { const bd = B.BOARDS[this.board.mcu.board], mp = this.board.mcu.pos || { x: 0, y: 0 }, by = 420 + mp.y, X0 = 40 + mp.x, pt = bd.pitch || 26, ry = bd.ry || 24; let x = X0 + bd.xt, y = by + ry, row = 0; bd.pins.forEach(p => { if (p === 'row') { row = 1; x = X0 + bd.xb; y = by + bd.h - ry; return; } if (!p) { x += row ? bd.gb : bd.gt; return; } if (p[1] === 'n') { (ctx.dummies = ctx.dummies || []).push({ x, y, name: p[0] }); x += pt; return; } ctx.sockets['s:' + p[0]] = { x, y, name: p[0], kind: p[1] }; x += pt; }); ctx.mcuBox = { x: X0, y: by, w: bd.w, h: bd.h }; }
     return ctx;
   }
   /* ---- interacción ---- */
   /* ---- geometría para arrastrar ---- */
+  upd2() { B.OFF2 = this.board.bb2 ? (this.board.mcu ? 420 + B.BOARDS[this.board.mcu.board].h + 40 : 400) : 0; return B.OFF2; }
+  onBoard(m) { for (const off of (B.OFF2 ? [0, B.OFF2] : [0])) { if (m.x >= B.hx(1) - 20 && m.x <= B.hx(COLS) + 20 && m.y >= RAILY['T+'] + off - 20 && m.y <= RAILY['B+'] + off + 20) return true; } return false; }
+  bbAt(d) { return B.OFF2 && d.y > B.OFF2 - 40 ? 2 : 1; }
   nearestKey(d) {
     const ctx = this.geom(); let best = null, bd = 12;
     Object.entries(ctx.sockets).forEach(([k, q]) => { const dd = Math.hypot(q.x - d.x, q.y - d.y); if (dd < bd) { bd = dd; best = k; } });
     if (best) return best;
-    for (const r of ['T+', 'T-', 'B-', 'B+']) if (Math.abs(d.y - RAILY[r]) < 9) { let bk = -1, bdd = 11; for (let k = 0; k < 50; k++) { const dd = Math.abs(d.x - railX(k)); if (dd < bdd) { bdd = dd; bk = k; } } if (bk >= 0) return `r:${r}:${bk}`; }
-    for (const [r, y] of Object.entries(ROWY)) if (Math.abs(d.y - y) < 9) { const c = Math.round((d.x - X0) / P) + 1; if (c >= 1 && c <= COLS && Math.abs(d.x - B.hx(c)) < 10) return hole(c, r); }
+    const bb = this.bbAt(d); if (bb === 2) d = { x: d.x, y: d.y - B.OFF2 };
+    for (const r of ['T+', 'T-', 'B-', 'B+']) if (Math.abs(d.y - RAILY[r]) < 9) { let bk = -1, bdd = 11; for (let k = 0; k < 50; k++) { const dd = Math.abs(d.x - railX(k)); if (dd < bdd) { bdd = dd; bk = k; } } if (bk >= 0) return rkey(r, bk, bb); }
+    for (const [r, y] of Object.entries(ROWY)) if (Math.abs(d.y - y) < 9) { const c = Math.round((d.x - X0) / P) + 1; if (c >= 1 && c <= COLS && Math.abs(d.x - B.hx(c)) < 10) return hole(c, r, bb); }
     return null;
   }
   /* extremo de una pieza de dos patas: agujero, carril o, fuera de la placa, posición libre (sin conectar) */
-  snapPx(d) {
-    const k = this.nearestKey(d); if (k && B.parseKey(k).t !== 's') return k;
+  snapPx(d0) {
+    const k = this.nearestKey(d0); if (k && B.parseKey(k).t !== 's') return k;
+    const bb = this.bbAt(d0), d = bb === 2 ? { x: d0.x, y: d0.y - B.OFF2 } : d0;
     if (d.x >= B.hx(1) - 14 && d.x <= B.hx(COLS) + 14 && d.y >= RAILY['T+'] - 14 && d.y <= RAILY['B+'] + 14) {
-      for (const r of ['T+', 'T-', 'B-', 'B+']) if (Math.abs(d.y - RAILY[r]) <= 12) { let bk = 0, bdd = 1e9; for (let q = 0; q < 50; q++) { const dd = Math.abs(d.x - railX(q)); if (dd < bdd) { bdd = dd; bk = q; } } return `r:${r}:${bk}`; }
-      return this.nearestHole(d); }
-    return `f:${Math.round(d.x)}:${Math.round(d.y)}`; }
+      for (const r of ['T+', 'T-', 'B-', 'B+']) if (Math.abs(d.y - RAILY[r]) <= 12) { let bk = 0, bdd = 1e9; for (let q = 0; q < 50; q++) { const dd = Math.abs(d.x - railX(q)); if (dd < bdd) { bdd = dd; bk = q; } } return rkey(r, bk, bb); }
+      return this.nearestHole(d0); }
+    return `f:${Math.round(d0.x)}:${Math.round(d0.y)}`; }
   nearestHole(d) {
+    const bb = this.bbAt(d); if (bb === 2) d = { x: d.x, y: d.y - B.OFF2 };
     const c = Math.max(1, Math.min(COLS, Math.round((d.x - X0) / P) + 1)); let br = 'e', bd = 1e9;
     for (const [r, y] of Object.entries(ROWY)) { const dd = Math.abs(d.y - y); if (dd < bd) { bd = dd; br = r; } }
-    return hole(c, br);
+    return hole(c, br, bb);
   }
   setMsel(ms, ends) { if (ms && ms.size === 0) ms = null; this.msel = ms; this.mends = ms ? (ends || {}) : null; }
   itemBox(it, ctx) {
     if (it.type === 'LA') return null; const pts = [];
     ['a', 'b', 'tip', 'red', 'black'].forEach(q => { if (it[q]) { const z = keyXY(it[q], ctx); if (z) pts.push(z); } }); (it.pts || []).forEach(q => pts.push(q));
-    if (it.type === 'SENS') { const c = SC().CAT[it.kind], R = B.rowsOf(it), x = B.hx(it.col), y = ROWY[R.lo]; if (c) pts.push({ x: x + c.box.x, y: y + c.box.y }, { x: x + c.box.x + c.box.w, y: y + c.box.y + c.box.h }); }
-    else if (it.col !== undefined) { const sp = this.colSpan(it); let R = null; try { R = B.rowsOf(it); } catch (er) { } const y0 = R ? ROWY[R.hi] : ROWY.f, y1 = R ? ROWY[R.lo] : ROWY.e; pts.push({ x: B.hx(it.col) - 6, y: y0 - 8 }, { x: B.hx(it.col + sp - 1) + 6, y: y1 + 8 }); }
+    if (it.type === 'SENS') { const c = SC().CAT[it.kind], R = B.rowsOf(it), x = B.hx(it.col), y = ROWY[R.lo] + (it.bb === 2 ? B.OFF2 : 0); if (c) pts.push({ x: x + c.box.x, y: y + c.box.y }, { x: x + c.box.x + c.box.w, y: y + c.box.y + c.box.h }); }
+    else if (it.col !== undefined) { const sp = this.colSpan(it); let R = null; try { R = B.rowsOf(it); } catch (er) { } const yo = it.bb === 2 ? B.OFF2 : 0, y0 = (R ? ROWY[R.hi] : ROWY.f) + yo, y1 = (R ? ROWY[R.lo] : ROWY.e) + yo; pts.push({ x: B.hx(it.col) - 6, y: y0 - 8 }, { x: B.hx(it.col + sp - 1) + 6, y: y1 + 8 }); }
     if (!pts.length) return null; if (it.off) pts.forEach(q => { q.x += it.off.x; q.y += it.off.y; }); const xs = pts.map(q => q.x), ys = pts.map(q => q.y); return { x0: Math.min(...xs) - 7, y0: Math.min(...ys) - 7, x1: Math.max(...xs) + 7, y1: Math.max(...ys) + 7 };
   }
   pickBox(q) {
@@ -216,12 +231,12 @@ B.Editor = class {
     if (ms.size === 1) { this.sel = [...ms][0]; this.setMsel(null); } else this.setMsel(ms, ends);
     this.hint(ms.size > 1 ? ms.size + ' elementos seleccionados: arrastra uno para moverlos o pulsa Supr para borrarlos.' : '');
   }
-  shiftItem(o, dc, dr, ends, dx, dy) {
+  shiftItem(o, dc, dr, ends, dx, dy, dbb) {
     const n = JSON.parse(JSON.stringify(o)); if (o.type === 'LA') return n;
-    if (o.col !== undefined) { const c = o.col + dc; if (c < 1 || c > COLS - this.colSpan(o) + 1) return null; n.col = c; if (COLT.includes(o.type)) { const r = (o.r === undefined ? 5 : o.r) + dr; if (r < 1 || r > 9) return null; n.r = r; } return n; }
+    if (o.col !== undefined) { const c = o.col + dc; if (c < 1 || c > COLS - this.colSpan(o) + 1) return null; n.col = c; if (dbb) { const nb = Math.max(1, Math.min(2, (o.bb || 1) + dbb)); if (nb === 2) n.bb = 2; else delete n.bb; } if (COLT.includes(o.type)) { const r = (o.r === undefined ? 5 : o.r) + dr; if (r < 1 || r > 9) return null; n.r = r; } return n; }
     const ks = o.type === 'DMM' ? ['red', 'black'] : o.type === 'LP' ? ['tip'] : ['a', 'b']; let bad = false;
-    ks.forEach(k => { if (o.type === 'WIRE' && !ends[k]) return; if (B.parseKey(o[k]).t !== 'h') return; const nk = this.shiftKey(o[k], dc, dr); if (!nk) bad = true; else n[k] = nk; });
-    if (bad) return null; if (o.type === 'WIRE' && o.pts) { if (ends.a && ends.b) n.pts = o.pts.map(p => ({ x: p.x + dx, y: p.y + dy })); else delete n.pts; }
+    ks.forEach(k => { if (o.type === 'WIRE' && !ends[k]) return; if (B.parseKey(o[k]).t !== 'h') return; const nk = this.shiftKey(o[k], dc, dr, dbb); if (!nk) bad = true; else n[k] = nk; });
+    if (bad) return null; if (o.type === 'WIRE' && o.pts) { if (ends.a && ends.b) n.pts = o.pts.map(p => ({ x: p.x + dx, y: p.y + dy + (dbb || 0) * B.OFF2 })); else delete n.pts; }
     return n;
   }
   copySel() {
@@ -241,17 +256,18 @@ B.Editor = class {
     this.sel = null; this.setMsel(ids.size > 1 ? ids : null, ends); if (ids.size === 1) this.sel = [...ids][0];
     this.hint(ids.size + (ids.size === 1 ? ' elemento pegado' : ' elementos pegados') + ' y seleccionados: arrástralos a su sitio (cuidado: si caen sobre agujeros ocupados se unen).'); this.changed(); return true;
   }
-  shiftKey(k, dc, dr) { const p = B.parseKey(k); if (p.t !== 'h') return null; const c = p.col + dc, ri = ROWS.indexOf(p.row) + dr; if (c < 1 || c > COLS || ri < 0 || ri >= ROWS.length) return null; return hole(c, ROWS[ri]); }
+  shiftKey(k, dc, dr, dbb) { const p = B.parseKey(k); if (p.t !== 'h') return null; const c = p.col + dc, ri = ROWS.indexOf(p.row) + dr, nb = Math.max(1, Math.min(2, (p.bb || 1) + (dbb || 0))); if (c < 1 || c > COLS || ri < 0 || ri >= ROWS.length) return null; return hole(c, ROWS[ri], nb); }
   colSpan(it) { if (it.type === 'SENS') return SC().colSpan(it.kind); return it.type === 'IC' ? DSim.IC[it.ic].n / 2 : (it.type === 'PUSH' || it.type === 'CLK') ? (it.type === 'CLK' ? 3 : 2) : it.type === 'DIPSW' ? (it.n || 8) : it.type === 'D7' ? 5 : 1; }
   dropPart(t, d, preview) {
-    const [ty, arg] = t.split(':'), b = this.board, add = (o) => { if (preview) { o.id = 'ghost'; this.ghost = o; return o; } if (o.type !== 'WIRE') { const same = (x) => b.items.some(q => q !== o && q.type === x.type && (x.col !== undefined ? q.col === x.col && (q.r === undefined ? 5 : q.r) === (x.r === undefined ? 5 : x.r) : q.a === x.a || (x.tip && q.tip === x.tip))); let n = 0; while (same(o) && n++ < 40) { if (o.col !== undefined) o.col = Math.min(COLS - this.colSpan(o) + 1, o.col + this.colSpan(o) + 1); else if (o.a && o.b) { const na = this.shiftKey(o.a, 1, 0), nb = this.shiftKey(o.b, 1, 0); if (!na || !nb) break; o.a = na; o.b = nb; } else break; } }
+    const [ty, arg] = t.split(':'), b = this.board, add = (o) => { if (o.col !== undefined && bbv === 2) o.bb = 2; if (preview) { o.id = 'ghost'; this.ghost = o; return o; } if (o.type !== 'WIRE') { const same = (x) => b.items.some(q => q !== o && q.type === x.type && (x.col !== undefined ? q.col === x.col && (q.bb || 1) === (x.bb || 1) && (q.r === undefined ? 5 : q.r) === (x.r === undefined ? 5 : x.r) : q.a === x.a || (x.tip && q.tip === x.tip))); let n = 0; while (same(o) && n++ < 40) { if (o.col !== undefined) o.col = Math.min(COLS - this.colSpan(o) + 1, o.col + this.colSpan(o) + 1); else if (o.a && o.b) { const na = this.shiftKey(o.a, 1, 0), nb = this.shiftKey(o.b, 1, 0); if (!na || !nb) break; o.a = na; o.b = nb; } else break; } }
       o.id = 'b' + b.nid++; b.items.push(o); this.sel = o.id; return o; };
-    if (preview && (ty === 'MCU' || ty === 'MB102')) return;
+    if (preview && (ty === 'MCU' || ty === 'MB102' || ty === 'BB2')) return;
+    if (ty === 'BB2') { this.toggleBB2(); return; }
     if (ty === 'MCU') { this.board.mcu = arg === 'none' ? null : { board: arg, code: this.board.mcu && this.board.mcu.code }; this.sel = this.board.mcu ? 'mcu' : null; this.changed(); this.onChange && this.onChange('mcu'); return; }
     if (ty === 'MB102') { this.board.mb.on = true; this.changed(); return; }
     const k = this.nearestKey(d) || this.nearestHole(d), p = B.parseKey(k), hh = this.nearestHole(d), hp = B.parseKey(hh);
-    const c0 = hp.col, row = hp.row, cl = (c) => Math.max(1, Math.min(COLS, c));
-    const span = (n) => { const c1 = c0 + n <= COLS ? c0 + n : c0 - n; return hole(c1, row); };
+    const c0 = hp.col, row = hp.row, bbv = hp.bb === 2 ? 2 : undefined, cl = (c) => Math.max(1, Math.min(COLS, c));
+    const span = (n) => { const c1 = c0 + n <= COLS ? c0 + n : c0 - n; return hole(c1, row, hp.bb); };
     if (ty === 'IC') { const dd = DSim.IC[arg]; add({ type: 'IC', ic: arg, r: rOfRow(row), col: Math.min(c0, COLS - dd.n / 2 + 1), label: 'U' + (b.items.filter(i => i.type === 'IC').length + 1) }); }
     else if (ty === 'SENS') { const d0 = SC().defaults(arg); add({ type: 'SENS', kind: arg, r: 5, col: Math.min(c0, COLS - SC().colSpan(arg) + 1), stim: d0.stim, o: d0.o }); }
     else if (ty === 'PUSH') add({ type: 'PUSH', r: rOfRow(row), col: Math.min(c0, COLS - 2) });
@@ -261,7 +277,7 @@ B.Editor = class {
     else if (ty === 'R') add({ type: 'R', a: hh, b: span(4), v: '330' });
     else if (ty === 'LED') add({ type: 'LED', a: hh, b: span(2), color: arg });
     else if (ty === 'C') add({ type: 'C', a: hh, b: span(3), v: '100u' });
-    else if (ty === 'WIRE') { const a = p.t === 'h' ? k : k; const bk = p.t === 'h' ? span(3) : hole(cl(Math.round((d.x - X0) / P) + 1), k.startsWith('r:T') ? 'j' : 'a'); add({ type: 'WIRE', a, b: bk, color: arg }); }
+    else if (ty === 'WIRE') { const a = p.t === 'h' ? k : k; const bk = p.t === 'h' ? span(3) : hole(cl(Math.round((d.x - X0) / P) + 1), p.t === 'r' && p.rail[0] === 'T' ? 'j' : 'a', p.bb); add({ type: 'WIRE', a, b: bk, color: arg }); }
     else if (ty === 'DMM' || ty === 'DMMA') add({ type: 'DMM', red: hh, black: span(3), mode: ty === 'DMMA' ? 'A' : 'V' });
     else if (ty === 'LP') add({ type: 'LP', tip: k });
     else if (ty === 'LA') { add({ type: 'LA', ch: [], gnd: null }); }
@@ -331,8 +347,8 @@ B.Editor = class {
     const d = this.dr;
     if (d) {
       if (Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) > 4) d.moved = true;
-      if (d.moved && d.kind === 'gmove') { const m = this.mouse, cur = this.nearestHole(m), g = B.parseKey(d.grab), c = B.parseKey(cur), dc = c.col - g.col, dr = ROWS.indexOf(c.row) - ROWS.indexOf(g.row), dx = B.hx(c.col) - B.hx(g.col), dy = ROWY[c.row] - ROWY[g.row], nw = {};
-        let ok = true; for (const id in d.origs) { const n = this.shiftItem(d.origs[id], dc, dr, (this.mends || {})[id] || { a: 1, b: 1 }, dx, dy); if (!n) { ok = false; break; } nw[id] = n; }
+      if (d.moved && d.kind === 'gmove') { const m = this.mouse, cur = this.nearestHole(m), g = B.parseKey(d.grab), c = B.parseKey(cur), dc = c.col - g.col, dr = ROWS.indexOf(c.row) - ROWS.indexOf(g.row), dx = B.hx(c.col) - B.hx(g.col), dy = ROWY[c.row] - ROWY[g.row], dbb = c.bb - g.bb, nw = {};
+        let ok = true; for (const id in d.origs) { const n = this.shiftItem(d.origs[id], dc, dr, (this.mends || {})[id] || { a: 1, b: 1 }, dx, dy, dbb); if (!n) { ok = false; break; } nw[id] = n; }
         if (ok) this.board.items = this.board.items.map(i => nw[i.id] || i); this.dirty = true; }
       else if (d.moved) { const it = this.board.items.find(i => i.id === d.id), m = this.mouse;
         if (d.kind === 'mcu') { this.board.mcu.pos = { x: Math.round(m.x - d.ox), y: Math.round(m.y - d.oy) }; this.dirty = true; }
@@ -341,16 +357,16 @@ B.Editor = class {
         else if (d.kind === 'wp') { it.pts[d.idx] = nudge(m); }
         else if (d.kind === 'end' && ['R', 'LED', 'C'].includes(it.type)) { it[d.end] = this.snapPx(m); }
         else if (d.kind === 'end') { const k2 = this.nearestKey(m); if (k2 && (it.type === 'WIRE' || it.type === 'DMM' || it.type === 'LP' || B.parseKey(k2).t !== 's')) it[d.end] = k2; }
-        else { const cur = this.nearestHole(m), g = B.parseKey(d.grab), c = B.parseKey(cur), dc = c.col - g.col, dr = ROWS.indexOf(c.row) - ROWS.indexOf(g.row), o = d.orig;
-          if (o.col !== undefined && d.gp && !(m.x >= B.hx(1) - 20 && m.x <= B.hx(COLS) + 20 && m.y >= RAILY['T+'] - 20 && m.y <= RAILY['B+'] + 20)) { it.col = o.col; if (o.r !== undefined) it.r = o.r; it.off = { x: Math.round((o.off ? o.off.x : 0) + m.x - d.gp.x), y: Math.round((o.off ? o.off.y : 0) + m.y - d.gp.y) }; }
-          else if (o.col !== undefined) { let dcc = dc, drr = dr; if (o.off) { dcc = Math.round((B.hx(o.col) + o.off.x + (m.x - d.gp.x) - X0) / P) + 1 - o.col; drr = 0; } delete it.off; it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dcc));
+        else { const cur = this.nearestHole(m), g = B.parseKey(d.grab), c = B.parseKey(cur), dc = c.col - g.col, dr = ROWS.indexOf(c.row) - ROWS.indexOf(g.row), dbb = c.bb - g.bb, o = d.orig;
+          if (o.col !== undefined && d.gp && !this.onBoard(m)) { it.col = o.col; if (o.r !== undefined) it.r = o.r; it.off = { x: Math.round((o.off ? o.off.x : 0) + m.x - d.gp.x), y: Math.round((o.off ? o.off.y : 0) + m.y - d.gp.y) }; }
+          else if (o.col !== undefined) { let dcc = dc, drr = dr; if (o.off) { dcc = Math.round((B.hx(o.col) + o.off.x + (m.x - d.gp.x) - X0) / P) + 1 - o.col; drr = 0; } delete it.off; if (c.bb === 2) it.bb = 2; else delete it.bb; it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dcc));
             if (COLT.includes(o.type)) it.r = Math.max(1, Math.min(9, (o.r === undefined ? 5 : o.r) + drr)); }
           else if (false) { it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dc)); if (COLT.includes(o.type)) it.r = Math.max(1, Math.min(9, (o.r === undefined ? 5 : o.r) + dr)); }
           else if (o.type === 'LP') { const k2 = this.nearestKey(m); if (k2) it.tip = k2; }
           else if (o.type === 'LA') { /* el analizador es fijo; se mueven sus clips con los tiradores */ }
           else if (['R', 'LED', 'C'].includes(o.type) && d.gp) { const dxp = m.x - d.gp.x, dyp = m.y - d.gp.y, ks = ['a', 'b'].map(q => { const z = keyXY(o[q], this.ctx || this.geom()); return z ? this.snapPx({ x: z.x + dxp, y: z.y + dyp }) : o[q]; });
-            if (ks.every(k => B.parseKey(k).t === 'h') && ['a', 'b'].every(q => B.parseKey(o[q]).t === 'h')) { const nk = ['a', 'b'].map(q => this.shiftKey(o[q], dc, dr)); if (nk.every(Boolean)) { it.a = nk[0]; it.b = nk[1]; } else { it.a = ks[0]; it.b = ks[1]; } } else { it.a = ks[0]; it.b = ks[1]; } }
-          else { const ends = o.type === 'DMM' ? ['red', 'black'] : o.type === 'LP' ? ['tip'] : ['a', 'b']; const nk = ends.map(q => this.shiftKey(o[q], dc, dr)); if (nk.every(Boolean)) ends.forEach((q, i) => it[q] = nk[i]); } }
+            if (ks.every(k => B.parseKey(k).t === 'h') && ['a', 'b'].every(q => B.parseKey(o[q]).t === 'h')) { const nk = ['a', 'b'].map(q => this.shiftKey(o[q], dc, dr, dbb)); if (nk.every(Boolean)) { it.a = nk[0]; it.b = nk[1]; } else { it.a = ks[0]; it.b = ks[1]; } } else { it.a = ks[0]; it.b = ks[1]; } }
+          else { const ends = o.type === 'DMM' ? ['red', 'black'] : o.type === 'LP' ? ['tip'] : ['a', 'b']; const nk = ends.map(q => this.shiftKey(o[q], dc, dr, dbb)); if (nk.every(Boolean)) ends.forEach((q, i) => it[q] = nk[i]); } }
         this.dirty = true; }
     }
     if (this.pend && this.pend.pts.length || this.wf) this.dirty = true;
@@ -365,10 +381,10 @@ B.Editor = class {
     if (this.wc) { const w = this.wc; this.wc = null; this.pend = null; if (!w.moved) { this.wf = { from: w.from, pts: [] }; this.hint('Cable: pica en zonas libres para crear codos y termina en un agujero. Esc cancela.'); } else if (!this.nearestKey(this.toDoc(e))) { this.wf = { from: w.from, pts: [nudge(this.toDoc(e))] }; this.hint('Codo añadido. Sigue picando y termina en un agujero. Esc cancela.'); } if (w.moved) { const k2 = this.nearestKey(this.toDoc(e)); if (k2 && k2 !== w.from) { const b = this.board; b.items.push({ id: 'b' + b.nid++, type: 'WIRE', a: w.from, b: k2, color: this.autoColor(w.from, k2) }); this.sel = 'b' + (b.nid - 1); this.changed(); } } this.dirty = true; }
     if (this.pressed) { const it = this.pressed; this.pressed = null; const ix = this.refs[it.id]; if (this.sim.parts[ix]) this.sim.parts[ix].closed = false; this.dirty = true; }
   }
-  keyLabel(k) { const p = B.parseKey(k); if (p.t === 'h') return `columna ${p.col}, fila ${p.row.toUpperCase()}`; if (p.t === 'r') return `carril ${p.rail.replace('-', '−')}`; if (p.t === 's') return p.name; if (p.t === 'f') return 'fuera de la placa (sin conectar)'; return k; }
+  keyLabel(k) { const p = B.parseKey(k); if (p.t === 'h') return `${p.bb === 2 ? 'placa 2, ' : ''}columna ${p.col}, fila ${p.row.toUpperCase()}`; if (p.t === 'r') return `${p.bb === 2 ? 'placa 2, ' : ''}carril ${p.rail.replace('-', '−')}`; if (p.t === 's') return p.name; if (p.t === 'f') return 'fuera de la placa (sin conectar)'; return k; }
   place(k) {
     const [ty, arg] = this.tool.split(':'), pd = this.pend, p = B.parseKey(k), b = this.board;
-    const add = (o) => { o.id = 'b' + b.nid++; b.items.push(o); this.sel = o.id; return o; };
+    const add = (o) => { if (o.col !== undefined && p.bb === 2) o.bb = 2; o.id = 'b' + b.nid++; b.items.push(o); this.sel = o.id; return o; };
     if (ty === 'IC') { if (p.t !== 'h') return this.hint('El integrado debe ir en la zona central de la protoboard.'); const d = DSim.IC[arg]; if (p.col + d.n / 2 - 1 > COLS) return this.hint('No cabe: se sale de la placa.');
       const n = b.items.filter(i => i.type === 'IC').length + 1; add({ type: 'IC', ic: arg, r: rOfRow(p.row), col: p.col, label: 'U' + n }); this.finish(); return; }
     if (ty === 'SENS') { if (p.t !== 'h') return; const sp = SC().colSpan(arg); if (p.col + sp - 1 > COLS) return this.hint('No cabe en esa posición.'); const d0 = SC().defaults(arg); add({ type: 'SENS', kind: arg, r: 5, col: p.col, stim: d0.stim, o: d0.o }); this.finish(); return; }
@@ -504,6 +520,7 @@ B.Editor = class {
     const b = this.board, sim = this.sim, ctx = this.geom(), nl = this.nl; this.ctx = ctx;
     const vb = this.svg.getBoundingClientRect(), k = this.view.k, W = vb.width * k, H = vb.height * k;
     let s = '';
+    const bbSvg = (bb) => { let s = '';
     // base
     s += `<rect x="20" y="8" width="${B.hx(COLS) + 40}" height="372" rx="8" fill="#EFEDE6" stroke="${BORD}" stroke-width="1.5"/>`;
     s += `<rect x="20" y="190" width="${B.hx(COLS) + 40}" height="14" fill="#E2DFD8"/><text x="${B.hx(COLS) + 36}" y="200" font-size="9" text-anchor="end" fill="${MUTE}">canal central</text>`;
@@ -517,8 +534,11 @@ B.Editor = class {
     const holeSvg = (key, x, y) => { const n = cls(key), hl = hn != null && n === hn, v = n != null ? sim.v[n] : null;
       const fill = hl ? SAGE : (n != null && (this.board.items.some(it => false))) ? '#bbb' : '#8a877f';
       return `<rect data-k="${key}" x="${x - 3.2}" y="${y - 3.2}" width="6.4" height="6.4" rx="1" fill="${hl ? SAGE : '#8a877f'}" ${hl ? 'stroke="#1F2421" stroke-width="0.6"' : ''} style="cursor:${this.tool ? 'crosshair' : 'default'}"/>`; };
-    for (let c = 1; c <= COLS; c++) Object.entries(ROWY).forEach(([r, y]) => s += holeSvg(hole(c, r), B.hx(c), y));
-    ['T+', 'T-', 'B-', 'B+'].forEach(r => { for (let i = 0; i < 50; i++) s += holeSvg(`r:${r}:${i}`, railX(i), RAILY[r]); });
+    for (let c = 1; c <= COLS; c++) Object.entries(ROWY).forEach(([r, y]) => s += holeSvg(hole(c, r, bb), B.hx(c), y));
+    ['T+', 'T-', 'B-', 'B+'].forEach(r => { for (let i = 0; i < 50; i++) s += holeSvg(rkey(r, i, bb), railX(i), RAILY[r]); });
+      return s; };
+    s += bbSvg(1);
+    if (b.bb2) s += `<g transform="translate(0,${B.OFF2})"><text x="20" y="-2" font-size="10" font-weight="700" fill="${MUTE}">PROTOBOARD 2 · sus carriles no tienen alimentación: llévala con cables</text>` + bbSvg(2) + '</g>';
     // fuente MB102 (siempre visible; los jumpers y el interruptor se pulsan)
     s += this.drawMB();
     // componentes
@@ -597,7 +617,7 @@ B.Editor = class {
     const hlp = it.type === 'IC' ? DSim.IC[it.ic].name + ': ' + DSim.IC[it.ic].desc : (UI.HELP[it.type + '_b'] || UI.HELP[it.type + (it.n || '')] || UI.HELP[it.type] || '');
     const fireMsg = this.fire && this.fire[it.id];
     const anch = () => { if (it.type === 'IC') return { x: B.hx(it.col) + (DSim.IC[it.ic].n / 2 - 1) * P / 2, y: 168 }; if (it.type === 'D7') return { x: B.hx(it.col) + 2 * P, y: 150 }; const a = pos(it.a), c = pos(it.b); return a && c ? { x: (a.x + c.x) / 2, y: Math.min(a.y, c.y) - 36 } : null; };
-    const dy = it.type !== 'SENS' && COLT.includes(it.type) ? ((R) => (ROWY[R.lo] + ROWY[R.hi]) / 2 - 193)(B.rowsOf(it)) : 0, tr = dy ? ` transform="translate(0,${dy})"` : '';
+    const dy = it.type !== 'SENS' && COLT.includes(it.type) ? ((R) => (ROWY[R.lo] + ROWY[R.hi]) / 2 - 193)(B.rowsOf(it)) + (it.bb === 2 ? B.OFF2 : 0) : 0, tr = dy ? ` transform="translate(0,${dy})"` : '';
     const G = (inner, extra = '') => { const an = fireMsg && anch(); return `<g data-id="${it.id}" ${extra}${tr}><title>${esc(hlp)}</title>${inner}${an ? B.flame(an.x, an.y, fireMsg) : ''}</g>`; };
     const selr = (x, y, w, h) => sel ? `<rect x="${x - 4}" y="${y - 4}" width="${w + 8}" height="${h + 8}" rx="5" fill="none" stroke="${SAGE}" stroke-dasharray="4 3" stroke-width="1.5"/>` : '';
     if (it.type === 'WIRE') { const a = pos(it.a), c = pos(it.b); if (!a || !c) return ''; const d = wirePath(a, c, it.pts); const wpH = sel && it.pts ? it.pts.map((q, i) => `<circle data-wp="${i}" data-item="${it.id}" cx="${q.x}" cy="${q.y}" r="6" fill="#F9F8F6" stroke="${SAGE}" stroke-width="2" style="cursor:grab"/>`).join('') : '';
@@ -611,7 +631,7 @@ B.Editor = class {
       else { const big = Schem.parseVal(it.v) >= 1e-6; body = big ? `<rect x="-15" y="-15" width="30" height="30" rx="5" fill="#33425b" stroke="#222"/><rect x="8" y="-15" width="7" height="30" fill="#b9c2d0"/><text x="-4" y="5" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">+</text>` : `<ellipse rx="9" ry="13" fill="#C97B3A" stroke="#7a4a1f"/>`; }
       return G(`<g transform="translate(${mx},${my}) rotate(${ang})"><line x1="${-L / 2}" y1="0" x2="${L / 2}" y2="0" stroke="#9a9a9a" stroke-width="2.4"/>${body}</g><circle cx="${a.x}" cy="${a.y}" r="2.6" fill="#555"/><circle cx="${c.x}" cy="${c.y}" r="2.6" fill="#555"/><rect x="${Math.min(a.x, c.x) - 8}" y="${Math.min(a.y, c.y) - (it.type === 'C' ? 15 : 9)}" width="${Math.abs(dx) + 16}" height="${Math.abs(dy) + (it.type === 'C' ? 30 : 18)}" fill="transparent"/>${it.type !== 'LED' ? `<text x="${mx}" y="${my - (it.type === 'C' ? 21 : 13)}" font-size="14" font-weight="700" text-anchor="middle" fill="${INK}" stroke="${BG}" stroke-width="3" paint-order="stroke">${esc(it.v)}${it.type === 'R' ? 'Ω' : 'F'}</text>` : ''}` + selr(Math.min(a.x, c.x) - 8, Math.min(a.y, c.y) - 12, Math.abs(dx) + 16, Math.abs(dy) + 24));
     }
-    if (it.type === 'SENS') { const c = SC().CAT[it.kind]; if (!c) return ''; const R = B.rowsOf(it), x = B.hx(it.col), y = ROWY[R.lo]; let sv = null;
+    if (it.type === 'SENS') { const c = SC().CAT[it.kind]; if (!c) return ''; const R = B.rowsOf(it), x = B.hx(it.col), y = ROWY[R.lo] + (it.bb === 2 ? B.OFF2 : 0); let sv = null;
       if (typeof ix === 'number') sv = sim.parts[ix]; else if (Array.isArray(ix)) sv = { leds: ix.map(k => { const q = sim.parts[k]; return q ? Math.min(1, (q.st.i || 0) / 0.012) : 0; }) };
       const bx = c.box; return G(`<g transform="translate(${x},${y})">${c.draw(it, sv)}</g>` + selr(x + bx.x, y + bx.y, bx.w, bx.h)); }
     if (it.type === 'IC') return G(this.drawIC(it, ix, sel));
