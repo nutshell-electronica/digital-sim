@@ -56,7 +56,7 @@ B.pinKeys = (it) => { // llaves de hoyos por patilla (índice = nº de patilla -
 /* agujeros donde hay una patilla clavada (para colorearlos en la placa) */
 B.heldKeys = (board) => { const S = new Set(), add = (k) => { if (k && /^(h|H|r|R2):/.test(k)) S.add(k); };
   board.items.forEach(it => { if (it.type === 'WIRE' || ['R', 'LED', 'C'].includes(it.type)) { add(it.a); add(it.b); return; } if (it.type === 'DMM') { add(it.red); add(it.black); return; } if (it.type === 'LP') { add(it.tip); return; }
-    if (it.col === undefined || it.off) return; const hole = (c, r) => hole0(c, r, it.bb), R = B.rowsOf(it), c = it.col;
+    if (it.col === undefined || it.off || it.rot) return; const hole = (c, r) => hole0(c, r, it.bb), R = B.rowsOf(it), c = it.col;
     if (it.type === 'IC') B.pinKeys(it).forEach(add);
     else if (it.type === 'PUSH') [[0, R.lo], [2, R.lo], [0, R.hi], [2, R.hi]].forEach(([d, r]) => add(hole(c + d, r)));
     else if (it.type === 'DIPSW') for (let i = 0; i < (it.n || 8); i++) { add(hole(c + i, R.lo)); add(hole(c + i, R.hi)); }
@@ -81,7 +81,7 @@ B.compile = function (board, ctx) {
     nb.part({ type: 'MCU', vdd: bd.vdd, pinIds: ids.slice(), names: ids.map(i => i.slice(2)), ref: 'mcu' });
   }
   board.items.forEach(it => {
-    if (it.off && it.col !== undefined) return; /* pieza sacada de la placa: no conecta con nada */
+    if ((it.off || it.rot) && it.col !== undefined) return; /* pieza sacada de la placa o girada: no conecta con nada */
     const hole = (c, r) => hole0(c, r, it.bb);
     switch (it.type) {
       case 'WIRE': nb.join(N(it.a), N(it.b)); break;
@@ -174,11 +174,13 @@ B.Editor = class {
   hint(t) { this.root.querySelector('#bhint').textContent = t; }
   rotateSel() {
     const it = this.board.items.find(i => i.id === this.sel); if (!it) return;
-    if (!['R', 'LED', 'C'].includes(it.type)) { this.hint(it.type === 'IC' ? 'Los integrados no se giran: van siempre a caballo del canal central.' : 'Esta pieza no se puede girar (R gira resistencias, LED y condensadores).'); return; }
-    const p = B.parseKey(it.a), q = B.parseKey(it.b); if (p.t !== 'h' || q.t !== 'h') return;
-    let dc = q.col - p.col, dr = ROWS.indexOf(q.row) - ROWS.indexOf(p.row);
-    for (let i = 0; i < 4; i++) { [dc, dr] = [-dr, dc]; const nb = this.shiftKey(it.a, dc, dr); if (nb && nb !== it.a) { it.b = nb; this.changed(); this.hint('Pieza girada 90° (R).'); return; } }
-    this.hint('No hay sitio para girarla desde esa posición.');
+    if (['R', 'LED', 'C'].includes(it.type)) { const ctx = this.ctx || this.geom(), z = keyXY(it.a, ctx), w = keyXY(it.b, ctx); if (!z || !w) return;
+      let v = { x: w.x - z.x, y: w.y - z.y }, first = null;
+      for (let i = 0; i < 4; i++) { v = { x: -v.y, y: v.x }; const nb = this.snapPx({ x: z.x + v.x, y: z.y + v.y }); if (!first) first = nb; if (B.parseKey(nb).t !== 'f') { first = nb; break; } }
+      if (first && first !== it.a) { it.b = first; this.changed(); this.hint('Pieza girada 90° (R).'); } return; }
+    if (it.col !== undefined || it.type === 'SENS') { it.rot = ((it.rot || 0) + 1) % 4; if (!it.rot) delete it.rot; this.changed();
+      this.hint(it.rot ? 'Girada 90° (R). Girada no conecta con la placa: pulsa R hasta volver a la posición original para clavarla.' : 'Pieza en su posición original (R).'); return; }
+    this.hint('Esta pieza no se puede girar.');
   }
   cancelTool() { this.wf = null; this.tool = null; this.pend = null; this.root.querySelectorAll('#bpal .pi').forEach(x => x.classList.remove('on')); this.dirty = true; }
   action(a, el) {
@@ -216,7 +218,7 @@ B.Editor = class {
   /* extremo de una pieza de dos patas: agujero, carril o, fuera de la placa, posición libre (sin conectar) */
   snapPx(d0) {
     const k = this.nearestKey(d0);
-    if (k) { const z = keyXY(k, this.ctx || this.geom()); if (z && Math.hypot(z.x - d0.x, z.y - d0.y) <= (B.parseKey(k).t === 's' ? 12 : MAG) && B.parseKey(k).t !== 's') return k; }
+    if (k) { const z = keyXY(k, this.ctx || this.geom()); if (z && Math.hypot(z.x - d0.x, z.y - d0.y) <= (B.parseKey(k).t === 'r' ? 11 : MAG) && B.parseKey(k).t !== 's') return k; }
     return `f:${Math.round(d0.x)}:${Math.round(d0.y)}`; }
   nearestHole(d) {
     const bb = this.bbAt(d); if (bb === 2) d = { x: d.x, y: d.y - B.OFF2 };
@@ -563,8 +565,9 @@ B.Editor = class {
     s += this.drawMB();
     // componentes
     const pos = (key) => keyXY(key, ctx);
-    b.items.forEach(it => { s += it.off ? `<g transform="translate(${it.off.x},${it.off.y})">${this.drawItem(it, pos)}</g>` : this.drawItem(it, pos); });
-    if (this.ghost) { try { s += `<g opacity=".55" pointer-events="none">${this.drawItem(this.ghost, pos)}</g>`; } catch (er) { } }
+    const xf = (it) => { const t = []; if (it.off) t.push(`translate(${it.off.x},${it.off.y})`); if (it.rot) { let c = { x: 0, y: 0 }; try { const bx = this.itemBox(Object.assign({}, it, { off: undefined, rot: undefined }), this.ctx || this.geom()); if (bx) c = { x: (bx.x0 + bx.x1) / 2, y: (bx.y0 + bx.y1) / 2 }; } catch (er) { } t.push(`rotate(${it.rot * 90} ${c.x} ${c.y})`); } return t.length ? `<g transform="${t.join(' ')}">${this.drawItem(it, pos)}</g>` : this.drawItem(it, pos); };
+    b.items.forEach(it => { s += xf(it); });
+    if (this.ghost) { try { s += `<g opacity=".55" pointer-events="none">${xf(this.ghost)}</g>`; } catch (er) { } }
     const si = b.items.find(i => i.id === this.sel);
     if (si) { const ends = si.type === 'DMM' ? ['red', 'black'] : si.type === 'LP' ? ['tip'] : ['R', 'LED', 'C', 'WIRE'].includes(si.type) ? ['a', 'b'] : [];
       if (si.type === 'LA') (si.ch || []).forEach((k, i) => { const z = k && pos(k); if (z) s += `<circle data-lach="${i}" data-item="${si.id}" cx="${z.x}" cy="${z.y}" r="7.5" fill="rgba(106,123,108,.28)" stroke="${SAGE}" stroke-width="1.6" style="cursor:grab"/>`; });
