@@ -53,6 +53,18 @@ B.pinKeys = (it) => { // llaves de hoyos por patilla (índice = nº de patilla -
   return null;
 };
 
+/* agujeros donde hay una patilla clavada (para colorearlos en la placa) */
+B.heldKeys = (board) => { const S = new Set(), add = (k) => { if (k && /^(h|H|r|R2):/.test(k)) S.add(k); };
+  board.items.forEach(it => { if (it.type === 'WIRE' || ['R', 'LED', 'C'].includes(it.type)) { add(it.a); add(it.b); return; } if (it.type === 'DMM') { add(it.red); add(it.black); return; } if (it.type === 'LP') { add(it.tip); return; }
+    if (it.col === undefined || it.off) return; const hole = (c, r) => hole0(c, r, it.bb), R = B.rowsOf(it), c = it.col;
+    if (it.type === 'IC') B.pinKeys(it).forEach(add);
+    else if (it.type === 'PUSH') [[0, R.lo], [2, R.lo], [0, R.hi], [2, R.hi]].forEach(([d, r]) => add(hole(c + d, r)));
+    else if (it.type === 'DIPSW') for (let i = 0; i < (it.n || 8); i++) { add(hole(c + i, R.lo)); add(hole(c + i, R.hi)); }
+    else if (it.type === 'CLK') [0, 1, 2].forEach(d => add(hole(c + d, R.lo)));
+    else if (it.type === 'D7') { [3, 4, 1, 0, 2].forEach(d => { add(hole(c + d, R.lo)); add(hole(c + d, R.hi)); }); }
+    else if (it.type === 'SENS') { const cat = SC().CAT[it.kind]; if (cat) cat.pins.forEach(q => add(hole(c + q.dx, q.hi ? R.hi : R.lo))); } });
+  return S; };
+
 /* ---------- compilación ---------- */
 B.compile = function (board, ctx) {
   const nb = new DSim.NetBuilder(), refs = {}, N = B.netOf, push = (it, part) => { part.ref = it.id; nb.part(part); return nb.parts.length - 1; };
@@ -257,7 +269,7 @@ B.Editor = class {
   shiftKey(k, dc, dr, dbb) { const p = B.parseKey(k); if (p.t !== 'h') return null; const c = p.col + dc, ri = ROWS.indexOf(p.row) + dr, nb = Math.max(1, Math.min(2, (p.bb || 1) + (dbb || 0))); if (c < 1 || c > COLS || ri < 0 || ri >= ROWS.length) return null; return hole(c, ROWS[ri], nb); }
   colSpan(it) { if (it.type === 'SENS') return SC().colSpan(it.kind); return it.type === 'IC' ? DSim.IC[it.ic].n / 2 : (it.type === 'PUSH' || it.type === 'CLK') ? (it.type === 'CLK' ? 3 : 2) : it.type === 'DIPSW' ? (it.n || 8) : it.type === 'D7' ? 5 : 1; }
   dropPart(t, d, preview) {
-    const [ty, arg] = t.split(':'), b = this.board, add = (o) => { if (o.col !== undefined && bbv === 2) o.bb = 2; if (preview) { o.id = 'ghost'; this.ghost = o; return o; } if (o.type !== 'WIRE') { const same = (x) => b.items.some(q => q !== o && q.type === x.type && (x.col !== undefined ? q.col === x.col && (q.bb || 1) === (x.bb || 1) && (q.r === undefined ? 5 : q.r) === (x.r === undefined ? 5 : x.r) : q.a === x.a || (x.tip && q.tip === x.tip))); let n = 0; while (same(o) && n++ < 40) { if (o.col !== undefined) o.col = Math.min(COLS - this.colSpan(o) + 1, o.col + this.colSpan(o) + 1); else if (o.a && o.b) { const na = this.shiftKey(o.a, 1, 0), nb = this.shiftKey(o.b, 1, 0); if (!na || !nb) break; o.a = na; o.b = nb; } else break; } }
+    const [ty, arg] = t.split(':'), b = this.board, add = (o) => { if (o.col !== undefined && bbv === 2) o.bb = 2; if (preview) { o.id = 'ghost'; this.ghost = o; return o; } if (o.type !== 'WIRE' && !o.off) { const same = (x) => b.items.some(q => q !== o && q.type === x.type && (x.col !== undefined ? q.col === x.col && (q.bb || 1) === (x.bb || 1) && (q.r === undefined ? 5 : q.r) === (x.r === undefined ? 5 : x.r) : q.a === x.a || (x.tip && q.tip === x.tip))); let n = 0; while (same(o) && n++ < 40) { if (o.col !== undefined) o.col = Math.min(COLS - this.colSpan(o) + 1, o.col + this.colSpan(o) + 1); else if (o.a && o.b) { const na = this.shiftKey(o.a, 1, 0), nb = this.shiftKey(o.b, 1, 0); if (!na || !nb) break; o.a = na; o.b = nb; } else break; } }
       o.id = 'b' + b.nid++; b.items.push(o); this.sel = o.id; return o; };
     if (preview && (ty === 'MCU' || ty === 'MB102' || ty === 'BB2')) return;
     if (ty === 'BB2') { this.toggleBB2(); return; }
@@ -266,15 +278,20 @@ B.Editor = class {
     const k = this.nearestKey(d) || this.nearestHole(d), p = B.parseKey(k), hh = this.nearestHole(d), hp = B.parseKey(hh);
     const c0 = hp.col, row = hp.row, bbv = hp.bb === 2 ? 2 : undefined, cl = (c) => Math.max(1, Math.min(COLS, c));
     const span = (n) => { const c1 = c0 + n <= COLS ? c0 + n : c0 - n; return hole(c1, row, hp.bb); };
-    if (ty === 'IC') { const dd = DSim.IC[arg]; add({ type: 'IC', ic: arg, r: rOfRow(row), col: Math.min(c0, COLS - dd.n / 2 + 1), label: 'U' + (b.items.filter(i => i.type === 'IC').length + 1) }); }
-    else if (ty === 'SENS') { const d0 = SC().defaults(arg); add({ type: 'SENS', kind: arg, r: 5, col: Math.min(c0, COLS - SC().colSpan(arg) + 1), stim: d0.stim, o: d0.o }); }
-    else if (ty === 'PUSH') add({ type: 'PUSH', r: rOfRow(row), col: Math.min(c0, COLS - 2) });
-    else if (ty === 'CLK') add({ type: 'CLK', r: rOfRow(row), col: Math.min(c0, COLS - 2), hz: '1', duty: 50 });
-    else if (ty === 'DIPSW') { const n = +arg || 8; add({ type: 'DIPSW', n, r: rOfRow(row), col: Math.min(c0, COLS - n + 1), st: new Array(n).fill(0) }); }
-    else if (ty === 'D7') add({ type: 'D7', r: rOfRow(row), col: Math.min(c0, COLS - 4), ca: arg === '1' ? 1 : 0 });
-    else if (ty === 'R') add({ type: 'R', a: hh, b: span(4), v: '330' });
-    else if (ty === 'LED') add({ type: 'LED', a: hh, b: span(2), color: arg });
-    else if (ty === 'C') add({ type: 'C', a: hh, b: span(3), v: '100u' });
+    /* colocación libre: sigue al cursor; solo se imanta a un agujero si está a menos de MAG px */
+    const colP = (sp, fixR) => { const o2 = this.bbAt(d) === 2 ? B.OFF2 : 0, dd = this.bbAt(d) === 2 ? { x: d.x, y: d.y - o2 } : d, col = Math.max(1, Math.min(COLS - sp + 1, Math.round((dd.x - X0) / P) + 1));
+      const near = Math.abs(B.hx(c0) - dd.x) <= MAG && Math.abs(ROWY[row] - dd.y) <= MAG, r = fixR && near ? fixR : rOfRow(row), o = { col: near ? Math.min(c0, COLS - sp + 1) : col, r };
+      if (!near) { o.off = { x: Math.round(dd.x - B.hx(col)), y: Math.round(dd.y - ROWY[ROWS[r]]) }; } return o; };
+    const legs = (n) => { const x2 = d.x + n * P > B.hx(COLS) + 6 ? d.x - n * P : d.x + n * P; return [this.snapPx(d), this.snapPx({ x: x2, y: d.y })]; };
+    if (ty === 'IC') { const dd = DSim.IC[arg]; add({ type: 'IC', ic: arg, ...colP(dd.n / 2), label: 'U' + (b.items.filter(i => i.type === 'IC').length + 1) }); }
+    else if (ty === 'SENS') { const d0 = SC().defaults(arg); add({ type: 'SENS', kind: arg, ...colP(SC().colSpan(arg), 5), stim: d0.stim, o: d0.o }); }
+    else if (ty === 'PUSH') add({ type: 'PUSH', ...colP(3) });
+    else if (ty === 'CLK') add({ type: 'CLK', ...colP(3), hz: '1', duty: 50 });
+    else if (ty === 'DIPSW') { const n = +arg || 8; add({ type: 'DIPSW', n, ...colP(n), st: new Array(n).fill(0) }); }
+    else if (ty === 'D7') add({ type: 'D7', ...colP(5), ca: arg === '1' ? 1 : 0 });
+    else if (ty === 'R') { const [a, b] = legs(4); add({ type: 'R', a, b, v: '330' }); }
+    else if (ty === 'LED') { const [a, b] = legs(2); add({ type: 'LED', a, b, color: arg }); }
+    else if (ty === 'C') { const [a, b] = legs(3); add({ type: 'C', a, b, v: '100u' }); }
     else if (ty === 'WIRE') { const a = p.t === 'h' ? k : k; const bk = p.t === 'h' ? span(3) : hole(cl(Math.round((d.x - X0) / P) + 1), p.t === 'r' && p.rail[0] === 'T' ? 'j' : 'a', p.bb); add({ type: 'WIRE', a, b: bk, color: arg }); }
     else if (ty === 'DMM' || ty === 'DMMA') add({ type: 'DMM', red: hh, black: span(3), mode: ty === 'DMMA' ? 'A' : 'V' });
     else if (ty === 'LP') add({ type: 'LP', tip: k });
@@ -411,7 +428,7 @@ B.Editor = class {
     const keepMcu = this.mcuCtl;
     const c = B.compile(this.board); this.cmp = c; this.nl = c.nl; this.refs = c.refs;
     this.sim = new DSim.Sim(c.nl, { dt: this.dt, recEvery: Math.max(1, Math.round(2e-5 / this.dt)) });
-    this.alerted = new Set(); this.fire = {}; this.lastAlerts = 0;
+    this.alerted = new Set(); this.fire = {}; this.lastAlerts = 0; this.extraAlerts = [];
     if (this.board.mcu) { const mp = this.sim.parts.find(p => p.type === 'MCU'); if (mp) { this.mcuPart = mp; this.onChange && this.onChange('mcu-build', mp); } }
     const ch = [];
     this.itemsOf('LA').forEach(la => la.ch.forEach((k, i) => { if (!k) return; const n = c.nl.index(B.netOf(k)); if (n != null) ch.push({ name: 'CH' + (i + 1) + ' · ' + this.keyLabel(k), w: this.sim.addWatch(n), color: i % 2 ? '#B85D34' : '#1F2421' }); }));
@@ -425,7 +442,7 @@ B.Editor = class {
     const sim = this.sim; this.extraAlerts = this.extraAlerts || [];
     this.board.items.forEach(it => {
       const ix = this.refs[it.id], sp = typeof ix === 'number' ? sim.parts[ix] : null; if (!sp) return;
-      if (!this.fire[it.id]) { const m = sim.overload(sp); if (m) { const nm = it.type === 'IC' ? DSim.IC[it.ic].name + ' ' + (it.label || '') : it.type === 'R' ? 'Resistencia ' + it.v + 'Ω' : it.type === 'LED' ? 'LED' : it.type === 'D7' ? 'Display' : it.type === 'SENS' ? ((SC().CAT[it.kind] || {}).name || 'Sensor') : it.type; this.fire[it.id] = nm.trim() + ': ' + m; this.alerted.add(it.id); this.extraAlerts.push('Sobrecarga en ' + nm.trim() + ': ' + m); this.dirty = true; } }
+      if (!this.fire[it.id]) { const m = sim.overload(sp); if (m) { const nm = it.type === 'IC' ? DSim.IC[it.ic].name + ' ' + (it.label || '') : it.type === 'R' ? 'Resistencia ' + it.v + 'Ω' : it.type === 'LED' ? 'LED' : it.type === 'D7' ? 'Display' : it.type === 'SENS' ? ((SC().CAT[it.kind] || {}).name || 'Sensor') : it.type; this.fire[it.id] = nm.trim() + ': ' + m; this.alerted.add(it.id); this.extraAlerts.push('Sobrecarga en ' + nm.trim() + ': ' + m + ' Pulsa «Reiniciar» para reponer la pieza.'); this.dirty = true; } }
       if (it.type === 'C' && Schem.parseVal(it.v) >= 1e-6 && !this.alerted.has(it.id)) { const v = sim.v[sp.pins[0]] - sim.v[sp.pins[1]]; if (v < -1) { this.alerted.add(it.id); const m = `condensador electrolítico ${it.v}F con la polaridad invertida (${v.toFixed(1).replace('.', ',')} V): puede reventar. La pata + (franja clara = −) va al lado de más tensión.`; this.fire[it.id] = 'Condensador ' + it.v + 'F: ' + m; this.extraAlerts.push('Sobrecarga en ' + m); this.dirty = true; } }
     });
     sim.parts.forEach(p => { if (p.type === 'V' && !this.alerted.has('V' + p.idx)) { const v = sim.v[p.pins[0]]; if (v < p.v * 0.5) { this.alerted.add('V' + p.idx); this.fire.mb = `la alimentación de ${p.v} V cae a ${v.toFixed(2).replace('.', ',')} V: cortocircuito entre +V y GND.`; this.dirty = true; this.extraAlerts.push(`Posible cortocircuito: la alimentación de ${p.v} V cae a ${v.toFixed(2)} V.`); } } });
@@ -522,6 +539,7 @@ B.Editor = class {
     const b = this.board, sim = this.sim, ctx = this.geom(), nl = this.nl; this.ctx = ctx;
     const vb = this.svg.getBoundingClientRect(), k = this.view.k, W = vb.width * k, H = vb.height * k;
     let s = '';
+    const held = B.heldKeys(this.board);
     const bbSvg = (bb) => { let s = '';
     // base
     s += `<rect x="20" y="8" width="${B.hx(COLS) + 40}" height="372" rx="8" fill="#EFEDE6" stroke="${BORD}" stroke-width="1.5"/>`;
@@ -534,8 +552,8 @@ B.Editor = class {
     const hn = this.hover ? this.nl.index(B.netOf(this.hover)) : null, occ = new Set();
     const cls = (key) => { const n = nl.index(B.netOf(key)); return n == null ? null : n; };
     const holeSvg = (key, x, y) => { const n = cls(key), hl = hn != null && n === hn, v = n != null ? sim.v[n] : null;
-      const fill = hl ? SAGE : (n != null && (this.board.items.some(it => false))) ? '#bbb' : '#8a877f';
-      return `<rect data-k="${key}" x="${x - 3.2}" y="${y - 3.2}" width="6.4" height="6.4" rx="1" fill="${hl ? SAGE : '#8a877f'}" ${hl ? 'stroke="#1F2421" stroke-width="0.6"' : ''} style="cursor:${this.tool ? 'crosshair' : 'default'}"/>`; };
+      const hd = held.has(key);
+      return `<rect data-k="${key}" x="${x - (hd ? 3.9 : 3.2)}" y="${y - (hd ? 3.9 : 3.2)}" width="${hd ? 7.8 : 6.4}" height="${hd ? 7.8 : 6.4}" rx="1" fill="${hd ? '#1FA66A' : hl ? SAGE : '#8a877f'}" ${hd ? 'stroke="#0B5A38" stroke-width="0.9"' : hl ? 'stroke="#1F2421" stroke-width="0.6"' : ''} style="cursor:${this.tool ? 'crosshair' : 'default'}"/>`; };
     for (let c = 1; c <= COLS; c++) Object.entries(ROWY).forEach(([r, y]) => s += holeSvg(hole(c, r, bb), B.hx(c), y));
     ['T+', 'T-', 'B-', 'B+'].forEach(r => { for (let i = 0; i < 50; i++) s += holeSvg(rkey(r, i, bb), railX(i), RAILY[r]); });
       return s; };

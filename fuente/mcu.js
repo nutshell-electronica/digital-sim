@@ -211,7 +211,7 @@ class McuCtl {
       if (v > lim || v < -0.7) why = `recibe ${v.toFixed(1).replace('.', ',')} V (máximo ${this.board === 'UNO' ? '5' : '3,3'} V)`; else if (cur > 0.04) why = `maneja ${(cur * 1e3).toFixed(0)} mA (máximo 40 mA)`;
       if (!why) { this.bad[k] = 0; continue; }
       if (v > lim && !this.warned.has(k)) { this.warned.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Riesgo de dañar la placa.`); }
-      if ((this.bad[k] = (this.bad[k] || 0) + 1) >= 8) { this.dead.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Pin dañado: ya no lee ni escribe.`); } }
+      if ((this.bad[k] = (this.bad[k] || 0) + 1) >= 8) { this.dead.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Pin dañado: ya no lee ni escribe. Pulsa «Reiniciar» para reponer la placa.`); } }
     return r;
   }
 }
