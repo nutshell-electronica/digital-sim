@@ -260,6 +260,14 @@ reg('MCP3008', { name: 'ADC MCP3008 (SPI, 8 canales)', group: 'Sensores', spi: {
 CAT.MCP3008.group = 'Sensores';
 function oledUrl(st) { if (!st.fb) return ''; if (st.urlv === st.fbv && st.url) return st.url; try { const c = document.createElement('canvas'); c.width = 128; c.height = 64; const x = c.getContext('2d'), im = x.createImageData(128, 64); for (let i = 0; i < 8192; i++) { const o = i * 4, v = st.fb[i]; im.data[o] = v ? 205 : 0; im.data[o + 1] = v ? 232 : 0; im.data[o + 2] = v ? 255 : 0; im.data[o + 3] = 255; } x.putImageData(im, 0, 0); st.url = c.toDataURL(); st.urlv = st.fbv; return st.url; } catch (e) { return ''; } }
 
+/* ---------- protección: alimentación y máximos absolutos (hoja de características) ----------
+   [pata +, pata −, máximo absoluto V, ¿se quema con la polaridad invertida?] */
+const SUP = { TMP36: [0, 2, 7, 1], LM35: [0, 2, 35, 1], DHT11: [0, 2, 6, 1], DHT22: [0, 2, 6, 1], DS18B20: [2, 0, 6, 1], HCSR04: [0, 3, 6.5, 1], PIR: [0, 2, 24, 1],
+  SOIL: [0, 1, 7, 1], MQ2: [0, 1, 7, 1], FLAME: [0, 1, 7, 1], SERVO: [1, 0, 8, 1], BUZZ: [0, 1, 9, 0], RELAY: [0, 1, 9, 1], MOTOR: [0, 1, 12, 0],
+  BMP280: [0, 1, 6, 1], MPU6050: [0, 1, 6, 1], OLED: [1, 0, 6, 1], MCP3008: [15, 8, 7, 1] };
+Object.keys(SUP).forEach(k => { if (CAT[k]) CAT[k].maxV = SUP[k][2]; });
+E.SENSSUP = SUP;
+
 /* ---------- API pública ---------- */
 const KINDS = Object.keys(CAT);
 const defaults = (kind) => { const c = CAT[kind], stim = {}, o = {}; (c.stim || []).forEach(s => { stim[s.k] = s.def === undefined ? 0 : s.def; }); (c.props || []).forEach(p => { o[p.k] = p.def; }); return { stim, o }; };

@@ -5,6 +5,7 @@ const B = {};
 const NS = 'http://www.w3.org/2000/svg';
 const INK = '#1F2421', MUTE = '#696C69', HI = '#B85D34', BG = '#F9F8F6', BORD = '#E2DFD8', SAGE = '#6A7B6C';
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const MAG = 6; /* px: radio del imán de los agujeros al arrastrar piezas (el paso es 18) */
 const COLS = 63, P = 18, X0 = 52, COLT = ['IC', 'PUSH', 'DIPSW', 'CLK', 'D7', 'SENS'], SC = () => root.SensCat;
 const ROWY = { j: 100, i: 118, h: 136, g: 154, f: 172, e: 214, d: 232, c: 250, b: 268, a: 286 };
 const ROWS = ['j', 'i', 'h', 'g', 'f', 'e', 'd', 'c', 'b', 'a'];
@@ -202,11 +203,8 @@ B.Editor = class {
   }
   /* extremo de una pieza de dos patas: agujero, carril o, fuera de la placa, posición libre (sin conectar) */
   snapPx(d0) {
-    const k = this.nearestKey(d0); if (k && B.parseKey(k).t !== 's') return k;
-    const bb = this.bbAt(d0), d = bb === 2 ? { x: d0.x, y: d0.y - B.OFF2 } : d0;
-    if (d.x >= B.hx(1) - 14 && d.x <= B.hx(COLS) + 14 && d.y >= RAILY['T+'] - 14 && d.y <= RAILY['B+'] + 14) {
-      for (const r of ['T+', 'T-', 'B-', 'B+']) if (Math.abs(d.y - RAILY[r]) <= 12) { let bk = 0, bdd = 1e9; for (let q = 0; q < 50; q++) { const dd = Math.abs(d.x - railX(q)); if (dd < bdd) { bdd = dd; bk = q; } } return rkey(r, bk, bb); }
-      return this.nearestHole(d0); }
+    const k = this.nearestKey(d0);
+    if (k) { const z = keyXY(k, this.ctx || this.geom()); if (z && Math.hypot(z.x - d0.x, z.y - d0.y) <= (B.parseKey(k).t === 's' ? 12 : MAG) && B.parseKey(k).t !== 's') return k; }
     return `f:${Math.round(d0.x)}:${Math.round(d0.y)}`; }
   nearestHole(d) {
     const bb = this.bbAt(d); if (bb === 2) d = { x: d.x, y: d.y - B.OFF2 };
@@ -358,14 +356,18 @@ B.Editor = class {
         else if (d.kind === 'end' && ['R', 'LED', 'C'].includes(it.type)) { it[d.end] = this.snapPx(m); }
         else if (d.kind === 'end') { const k2 = this.nearestKey(m); if (k2 && (it.type === 'WIRE' || it.type === 'DMM' || it.type === 'LP' || B.parseKey(k2).t !== 's')) it[d.end] = k2; }
         else { const cur = this.nearestHole(m), g = B.parseKey(d.grab), c = B.parseKey(cur), dc = c.col - g.col, dr = ROWS.indexOf(c.row) - ROWS.indexOf(g.row), dbb = c.bb - g.bb, o = d.orig;
-          if (o.col !== undefined && d.gp && !this.onBoard(m)) { it.col = o.col; if (o.r !== undefined) it.r = o.r; it.off = { x: Math.round((o.off ? o.off.x : 0) + m.x - d.gp.x), y: Math.round((o.off ? o.off.y : 0) + m.y - d.gp.y) }; }
-          else if (o.col !== undefined) { let dcc = dc, drr = dr; if (o.off) { dcc = Math.round((B.hx(o.col) + o.off.x + (m.x - d.gp.x) - X0) / P) + 1 - o.col; drr = 0; } delete it.off; if (c.bb === 2) it.bb = 2; else delete it.bb; it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dcc));
-            if (COLT.includes(o.type)) it.r = Math.max(1, Math.min(9, (o.r === undefined ? 5 : o.r) + drr)); }
+          if (o.col !== undefined && d.gp) { const sp = this.colSpan(o), yo = (x) => ROWY[B.rowsOf({ r: x }).lo], o2 = o.bb === 2 ? B.OFF2 : 0;
+            const T = { x: B.hx(o.col) + (o.off ? o.off.x : 0) + m.x - d.gp.x, y: yo(o.r === undefined ? 5 : o.r) + o2 + (o.off ? o.off.y : 0) + m.y - d.gp.y };
+            const bb = this.bbAt(T), off2 = bb === 2 ? B.OFF2 : 0, col = Math.max(1, Math.min(COLS - sp + 1, Math.round((T.x - X0) / P) + 1)); let r = o.r;
+            if (COLT.includes(o.type)) { let bd = 1e9; r = o.r === undefined ? 5 : o.r; for (let q = 1; q <= 9; q++) { const dd = Math.abs(yo(q) + off2 - T.y); if (dd < bd) { bd = dd; r = q; } } }
+            const S = { x: B.hx(col), y: yo(r === undefined ? 5 : r) + off2 };
+            it.col = col; if (r !== undefined) it.r = r; if (bb === 2) it.bb = 2; else delete it.bb;
+            if (Math.abs(S.x - T.x) <= MAG && (!COLT.includes(o.type) || Math.abs(S.y - T.y) <= MAG)) delete it.off; else it.off = { x: Math.round(T.x - S.x), y: Math.round(T.y - S.y) }; }
           else if (false) { it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dc)); if (COLT.includes(o.type)) it.r = Math.max(1, Math.min(9, (o.r === undefined ? 5 : o.r) + dr)); }
           else if (o.type === 'LP') { const k2 = this.nearestKey(m); if (k2) it.tip = k2; }
           else if (o.type === 'LA') { /* el analizador es fijo; se mueven sus clips con los tiradores */ }
           else if (['R', 'LED', 'C'].includes(o.type) && d.gp) { const dxp = m.x - d.gp.x, dyp = m.y - d.gp.y, ks = ['a', 'b'].map(q => { const z = keyXY(o[q], this.ctx || this.geom()); return z ? this.snapPx({ x: z.x + dxp, y: z.y + dyp }) : o[q]; });
-            if (ks.every(k => B.parseKey(k).t === 'h') && ['a', 'b'].every(q => B.parseKey(o[q]).t === 'h')) { const nk = ['a', 'b'].map(q => this.shiftKey(o[q], dc, dr, dbb)); if (nk.every(Boolean)) { it.a = nk[0]; it.b = nk[1]; } else { it.a = ks[0]; it.b = ks[1]; } } else { it.a = ks[0]; it.b = ks[1]; } }
+            it.a = ks[0]; it.b = ks[1]; }
           else { const ends = o.type === 'DMM' ? ['red', 'black'] : o.type === 'LP' ? ['tip'] : ['a', 'b']; const nk = ends.map(q => this.shiftKey(o[q], dc, dr, dbb)); if (nk.every(Boolean)) ends.forEach((q, i) => it[q] = nk[i]); } }
         this.dirty = true; }
     }
@@ -423,7 +425,7 @@ B.Editor = class {
     const sim = this.sim; this.extraAlerts = this.extraAlerts || [];
     this.board.items.forEach(it => {
       const ix = this.refs[it.id], sp = typeof ix === 'number' ? sim.parts[ix] : null; if (!sp) return;
-      if (!this.fire[it.id]) { const m = sim.overload(sp); if (m) { const nm = it.type === 'IC' ? DSim.IC[it.ic].name + ' ' + (it.label || '') : it.type === 'R' ? 'Resistencia ' + it.v + 'Ω' : it.type === 'LED' ? 'LED' : it.type === 'D7' ? 'Display' : it.type; this.fire[it.id] = nm.trim() + ': ' + m; this.alerted.add(it.id); this.extraAlerts.push('Sobrecarga en ' + nm.trim() + ': ' + m); this.dirty = true; } }
+      if (!this.fire[it.id]) { const m = sim.overload(sp); if (m) { const nm = it.type === 'IC' ? DSim.IC[it.ic].name + ' ' + (it.label || '') : it.type === 'R' ? 'Resistencia ' + it.v + 'Ω' : it.type === 'LED' ? 'LED' : it.type === 'D7' ? 'Display' : it.type === 'SENS' ? ((SC().CAT[it.kind] || {}).name || 'Sensor') : it.type; this.fire[it.id] = nm.trim() + ': ' + m; this.alerted.add(it.id); this.extraAlerts.push('Sobrecarga en ' + nm.trim() + ': ' + m); this.dirty = true; } }
       if (it.type === 'C' && Schem.parseVal(it.v) >= 1e-6 && !this.alerted.has(it.id)) { const v = sim.v[sp.pins[0]] - sim.v[sp.pins[1]]; if (v < -1) { this.alerted.add(it.id); const m = `condensador electrolítico ${it.v}F con la polaridad invertida (${v.toFixed(1).replace('.', ',')} V): puede reventar. La pata + (franja clara = −) va al lado de más tensión.`; this.fire[it.id] = 'Condensador ' + it.v + 'F: ' + m; this.extraAlerts.push('Sobrecarga en ' + m); this.dirty = true; } }
     });
     sim.parts.forEach(p => { if (p.type === 'V' && !this.alerted.has('V' + p.idx)) { const v = sim.v[p.pins[0]]; if (v < p.v * 0.5) { this.alerted.add('V' + p.idx); this.fire.mb = `la alimentación de ${p.v} V cae a ${v.toFixed(2).replace('.', ',')} V: cortocircuito entre +V y GND.`; this.dirty = true; this.extraAlerts.push(`Posible cortocircuito: la alimentación de ${p.v} V cae a ${v.toFixed(2)} V.`); } } });
@@ -489,7 +491,7 @@ B.Editor = class {
     if (it.type === 'IC') { const t = this.root.querySelector('#pintab'), ix = this.refs[it.id], sp = this.sim.parts[ix]; if (t && sp) { const d = sp.def; let h = '<table class="pt"><tr><th>Pata</th><th>Nombre</th><th>V</th><th>Nivel</th></tr>';
       for (let k = 1; k <= d.n; k++) { const n = sp.pins[k - 1], v = n != null ? this.sim.v[n] : null; const lv = v == null ? '—' : v >= (sp.fam.kind === 'ttl' ? 2 : 0.7 * (sp.vcc || 5)) ? '1' : v <= (sp.fam.kind === 'ttl' ? 0.8 : 0.3 * (sp.vcc || 5)) ? '0' : '?'; h += `<tr><td>${k}</td><td>${esc(d.pn[k] || '')}</td><td>${v == null ? '—' : v.toFixed(2)}</td><td>${lv}</td></tr>`; }
       t.innerHTML = h + '</table>' + (sp.burned ? '<p class="warn">Integrado dañado.</p>' : ''); } }
-    if (it.type === 'SENS') { const el = this.root.querySelector('#sread'), c = SC().CAT[it.kind], ix = this.refs[it.id]; if (el && c) el.textContent = c.readout ? c.readout(it, typeof ix === 'number' ? this.sim.parts[ix] : null) : ''; }
+    if (it.type === 'SENS') { const el = this.root.querySelector('#sread'), c = SC().CAT[it.kind], ix = this.refs[it.id]; if (el && c) { const sp0 = typeof ix === 'number' ? this.sim.parts[ix] : null; el.textContent = sp0 && sp0.st && sp0.st.burned ? '⚠ QUEMADO: ' + (this.fire[it.id] || 'sobretensión') : c.readout ? c.readout(it, sp0) : ''; } }
     if (it.type === 'DMM') { const el = this.root.querySelector('#dmmv'), r = this.dmmRead(it); if (el) el.textContent = r ? r.text : '—'; }
     if (it.type === 'LP') { const el = this.root.querySelector('#lpv'); if (el) { const q = this.lpState(it); el.textContent = q.s === 'H' ? '1 · alto (' + q.v.toFixed(2) + ' V)' : q.s === 'L' ? '0 · bajo (' + q.v.toFixed(2) + ' V)' : 'Z · alta impedancia (' + q.why + ')'; } }
   }

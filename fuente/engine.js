@@ -276,7 +276,7 @@ class Sim {
     const n = p.pins.length; if (!p.pg) { p.pg = new Float64Array(n); p.pi = new Float64Array(n); p.pk = new Int32Array(n); }
     const pg = p.pg, pi = p.pi, pk = p.pk; pg.fill(GMIN); pi.fill(0); pk.fill(0);
     const vp = this.vp;
-    if (p.type === 'SENS') { p.links = []; const m = E.SENS && E.SENS[p.kind]; if (m) m(this, p); return; }
+    if (p.type === 'SENS') { p.links = []; if (p.st && p.st.burned) return; const m = E.SENS && E.SENS[p.kind]; if (m) m(this, p); return; }
     if (p.type === 'IC') {
       const d = p.def, fam = p.fam, pins = p.pins;
       let vcc = 5, vg = 0, powered = true;
@@ -415,9 +415,11 @@ class Sim {
     else if (p.type === 'DISP7' && !p.dead) { const com = p.pins[7]; for (let k = 0; k < 8; k++) { if (!p.st.on[k]) continue; const a = p.ca ? com : p.pins[k], c = p.ca ? p.pins[k] : com, i = (v[a] - v[c] - p.led[0]) / p.led[1]; if (i > 0.03) { m = `el segmento ${'abcdefgp'[k]} soporta ${(i * 1e3).toFixed(0)} mA; el máximo es 30 mA (normal: 10-20 mA). Cada segmento necesita su resistencia en serie.`; break; } } }
     else if (p.type === 'IC' && !p.burned && p.powered && p.out && p.def && !p.def.analog) { for (const pin in p.out) { const i = p.pk[pin - 1] ? p.pi[pin - 1] - p.pg[pin - 1] * v[p.pins[pin - 1]] : 0; if (Math.abs(i) > 0.025) { m = `la salida de la pata ${pin} ${i > 0 ? 'entrega' : 'absorbe'} ${(Math.abs(i) * 1e3).toFixed(0)} mA; el máximo es 25 mA. Suele ser un cortocircuito de la salida a +5 V o a GND, o un LED sin resistencia.`; break; } } }
     else if (p.type === 'IC' && p.burned) m = 'alimentación fuera de límites: el integrado está dañado.';
+    else if (p.type === 'SENS' && p.st && !p.st.burned) { const u = E.SENSSUP && E.SENSSUP[p.kind], a = u && p.pins[u[0]], b = u && p.pins[u[1]];
+      if (u && a != null && b != null) { const vc = v[a] - v[b]; if (vc > u[2]) m = `alimentado con ${vc.toFixed(1).replace('.', ',')} V; el máximo absoluto es ${String(u[2]).replace('.', ',')} V. Queda inutilizado.`; else if (u[3] && vc < -0.7) m = `alimentado con la polaridad invertida (${vc.toFixed(1).replace('.', ',')} V): +V va a la pata de más tensión. Queda inutilizado.`; } }
     if (!m) { p.ovN = 0; return null; }
     if ((p.ovN = (p.ovN || 0) + 1) < 3) return null;
-    if (p.type === 'R') { p.open = 1; p.r = 1e9; } else if (p.type === 'LED' || p.type === 'DISP7') { p.led = [99, 1e9]; p.dead = 1; } else if (p.type === 'IC') p.burned = true;
+    if (p.type === 'R') { p.open = 1; p.r = 1e9; } else if (p.type === 'LED' || p.type === 'DISP7') { p.led = [99, 1e9]; p.dead = 1; } else if (p.type === 'IC') p.burned = true; else if (p.type === 'SENS') { p.st.burned = true; p.links = []; }
     return m;
   }
   current(p) {

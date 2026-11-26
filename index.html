@@ -402,7 +402,7 @@ class Sim {
     const n = p.pins.length; if (!p.pg) { p.pg = new Float64Array(n); p.pi = new Float64Array(n); p.pk = new Int32Array(n); }
     const pg = p.pg, pi = p.pi, pk = p.pk; pg.fill(GMIN); pi.fill(0); pk.fill(0);
     const vp = this.vp;
-    if (p.type === 'SENS') { p.links = []; const m = E.SENS && E.SENS[p.kind]; if (m) m(this, p); return; }
+    if (p.type === 'SENS') { p.links = []; if (p.st && p.st.burned) return; const m = E.SENS && E.SENS[p.kind]; if (m) m(this, p); return; }
     if (p.type === 'IC') {
       const d = p.def, fam = p.fam, pins = p.pins;
       let vcc = 5, vg = 0, powered = true;
@@ -541,9 +541,11 @@ class Sim {
     else if (p.type === 'DISP7' && !p.dead) { const com = p.pins[7]; for (let k = 0; k < 8; k++) { if (!p.st.on[k]) continue; const a = p.ca ? com : p.pins[k], c = p.ca ? p.pins[k] : com, i = (v[a] - v[c] - p.led[0]) / p.led[1]; if (i > 0.03) { m = `el segmento ${'abcdefgp'[k]} soporta ${(i * 1e3).toFixed(0)} mA; el máximo es 30 mA (normal: 10-20 mA). Cada segmento necesita su resistencia en serie.`; break; } } }
     else if (p.type === 'IC' && !p.burned && p.powered && p.out && p.def && !p.def.analog) { for (const pin in p.out) { const i = p.pk[pin - 1] ? p.pi[pin - 1] - p.pg[pin - 1] * v[p.pins[pin - 1]] : 0; if (Math.abs(i) > 0.025) { m = `la salida de la pata ${pin} ${i > 0 ? 'entrega' : 'absorbe'} ${(Math.abs(i) * 1e3).toFixed(0)} mA; el máximo es 25 mA. Suele ser un cortocircuito de la salida a +5 V o a GND, o un LED sin resistencia.`; break; } } }
     else if (p.type === 'IC' && p.burned) m = 'alimentación fuera de límites: el integrado está dañado.';
+    else if (p.type === 'SENS' && p.st && !p.st.burned) { const u = E.SENSSUP && E.SENSSUP[p.kind], a = u && p.pins[u[0]], b = u && p.pins[u[1]];
+      if (u && a != null && b != null) { const vc = v[a] - v[b]; if (vc > u[2]) m = `alimentado con ${vc.toFixed(1).replace('.', ',')} V; el máximo absoluto es ${String(u[2]).replace('.', ',')} V. Queda inutilizado.`; else if (u[3] && vc < -0.7) m = `alimentado con la polaridad invertida (${vc.toFixed(1).replace('.', ',')} V): +V va a la pata de más tensión. Queda inutilizado.`; } }
     if (!m) { p.ovN = 0; return null; }
     if ((p.ovN = (p.ovN || 0) + 1) < 3) return null;
-    if (p.type === 'R') { p.open = 1; p.r = 1e9; } else if (p.type === 'LED' || p.type === 'DISP7') { p.led = [99, 1e9]; p.dead = 1; } else if (p.type === 'IC') p.burned = true;
+    if (p.type === 'R') { p.open = 1; p.r = 1e9; } else if (p.type === 'LED' || p.type === 'DISP7') { p.led = [99, 1e9]; p.dead = 1; } else if (p.type === 'IC') p.burned = true; else if (p.type === 'SENS') { p.st.burned = true; p.links = []; }
     return m;
   }
   current(p) {
@@ -1283,6 +1285,14 @@ reg('MCP3008', { name: 'ADC MCP3008 (SPI, 8 canales)', group: 'Sensores', spi: {
 CAT.MCP3008.group = 'Sensores';
 function oledUrl(st) { if (!st.fb) return ''; if (st.urlv === st.fbv && st.url) return st.url; try { const c = document.createElement('canvas'); c.width = 128; c.height = 64; const x = c.getContext('2d'), im = x.createImageData(128, 64); for (let i = 0; i < 8192; i++) { const o = i * 4, v = st.fb[i]; im.data[o] = v ? 205 : 0; im.data[o + 1] = v ? 232 : 0; im.data[o + 2] = v ? 255 : 0; im.data[o + 3] = 255; } x.putImageData(im, 0, 0); st.url = c.toDataURL(); st.urlv = st.fbv; return st.url; } catch (e) { return ''; } }
 
+/* ---------- protección: alimentación y máximos absolutos (hoja de características) ----------
+   [pata +, pata −, máximo absoluto V, ¿se quema con la polaridad invertida?] */
+const SUP = { TMP36: [0, 2, 7, 1], LM35: [0, 2, 35, 1], DHT11: [0, 2, 6, 1], DHT22: [0, 2, 6, 1], DS18B20: [2, 0, 6, 1], HCSR04: [0, 3, 6.5, 1], PIR: [0, 2, 24, 1],
+  SOIL: [0, 1, 7, 1], MQ2: [0, 1, 7, 1], FLAME: [0, 1, 7, 1], SERVO: [1, 0, 8, 1], BUZZ: [0, 1, 9, 0], RELAY: [0, 1, 9, 1], MOTOR: [0, 1, 12, 0],
+  BMP280: [0, 1, 6, 1], MPU6050: [0, 1, 6, 1], OLED: [1, 0, 6, 1], MCP3008: [15, 8, 7, 1] };
+Object.keys(SUP).forEach(k => { if (CAT[k]) CAT[k].maxV = SUP[k][2]; });
+E.SENSSUP = SUP;
+
 /* ---------- API pública ---------- */
 const KINDS = Object.keys(CAT);
 const defaults = (kind) => { const c = CAT[kind], stim = {}, o = {}; (c.stim || []).forEach(s => { stim[s.k] = s.def === undefined ? 0 : s.def; }); (c.props || []).forEach(p => { o[p.k] = p.def; }); return { stim, o }; };
@@ -1985,6 +1995,7 @@ const B = {};
 const NS = 'http://www.w3.org/2000/svg';
 const INK = '#1F2421', MUTE = '#696C69', HI = '#B85D34', BG = '#F9F8F6', BORD = '#E2DFD8', SAGE = '#6A7B6C';
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const MAG = 6; /* px: radio del imán de los agujeros al arrastrar piezas (el paso es 18) */
 const COLS = 63, P = 18, X0 = 52, COLT = ['IC', 'PUSH', 'DIPSW', 'CLK', 'D7', 'SENS'], SC = () => root.SensCat;
 const ROWY = { j: 100, i: 118, h: 136, g: 154, f: 172, e: 214, d: 232, c: 250, b: 268, a: 286 };
 const ROWS = ['j', 'i', 'h', 'g', 'f', 'e', 'd', 'c', 'b', 'a'];
@@ -2182,11 +2193,8 @@ B.Editor = class {
   }
   /* extremo de una pieza de dos patas: agujero, carril o, fuera de la placa, posición libre (sin conectar) */
   snapPx(d0) {
-    const k = this.nearestKey(d0); if (k && B.parseKey(k).t !== 's') return k;
-    const bb = this.bbAt(d0), d = bb === 2 ? { x: d0.x, y: d0.y - B.OFF2 } : d0;
-    if (d.x >= B.hx(1) - 14 && d.x <= B.hx(COLS) + 14 && d.y >= RAILY['T+'] - 14 && d.y <= RAILY['B+'] + 14) {
-      for (const r of ['T+', 'T-', 'B-', 'B+']) if (Math.abs(d.y - RAILY[r]) <= 12) { let bk = 0, bdd = 1e9; for (let q = 0; q < 50; q++) { const dd = Math.abs(d.x - railX(q)); if (dd < bdd) { bdd = dd; bk = q; } } return rkey(r, bk, bb); }
-      return this.nearestHole(d0); }
+    const k = this.nearestKey(d0);
+    if (k) { const z = keyXY(k, this.ctx || this.geom()); if (z && Math.hypot(z.x - d0.x, z.y - d0.y) <= (B.parseKey(k).t === 's' ? 12 : MAG) && B.parseKey(k).t !== 's') return k; }
     return `f:${Math.round(d0.x)}:${Math.round(d0.y)}`; }
   nearestHole(d) {
     const bb = this.bbAt(d); if (bb === 2) d = { x: d.x, y: d.y - B.OFF2 };
@@ -2338,14 +2346,18 @@ B.Editor = class {
         else if (d.kind === 'end' && ['R', 'LED', 'C'].includes(it.type)) { it[d.end] = this.snapPx(m); }
         else if (d.kind === 'end') { const k2 = this.nearestKey(m); if (k2 && (it.type === 'WIRE' || it.type === 'DMM' || it.type === 'LP' || B.parseKey(k2).t !== 's')) it[d.end] = k2; }
         else { const cur = this.nearestHole(m), g = B.parseKey(d.grab), c = B.parseKey(cur), dc = c.col - g.col, dr = ROWS.indexOf(c.row) - ROWS.indexOf(g.row), dbb = c.bb - g.bb, o = d.orig;
-          if (o.col !== undefined && d.gp && !this.onBoard(m)) { it.col = o.col; if (o.r !== undefined) it.r = o.r; it.off = { x: Math.round((o.off ? o.off.x : 0) + m.x - d.gp.x), y: Math.round((o.off ? o.off.y : 0) + m.y - d.gp.y) }; }
-          else if (o.col !== undefined) { let dcc = dc, drr = dr; if (o.off) { dcc = Math.round((B.hx(o.col) + o.off.x + (m.x - d.gp.x) - X0) / P) + 1 - o.col; drr = 0; } delete it.off; if (c.bb === 2) it.bb = 2; else delete it.bb; it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dcc));
-            if (COLT.includes(o.type)) it.r = Math.max(1, Math.min(9, (o.r === undefined ? 5 : o.r) + drr)); }
+          if (o.col !== undefined && d.gp) { const sp = this.colSpan(o), yo = (x) => ROWY[B.rowsOf({ r: x }).lo], o2 = o.bb === 2 ? B.OFF2 : 0;
+            const T = { x: B.hx(o.col) + (o.off ? o.off.x : 0) + m.x - d.gp.x, y: yo(o.r === undefined ? 5 : o.r) + o2 + (o.off ? o.off.y : 0) + m.y - d.gp.y };
+            const bb = this.bbAt(T), off2 = bb === 2 ? B.OFF2 : 0, col = Math.max(1, Math.min(COLS - sp + 1, Math.round((T.x - X0) / P) + 1)); let r = o.r;
+            if (COLT.includes(o.type)) { let bd = 1e9; r = o.r === undefined ? 5 : o.r; for (let q = 1; q <= 9; q++) { const dd = Math.abs(yo(q) + off2 - T.y); if (dd < bd) { bd = dd; r = q; } } }
+            const S = { x: B.hx(col), y: yo(r === undefined ? 5 : r) + off2 };
+            it.col = col; if (r !== undefined) it.r = r; if (bb === 2) it.bb = 2; else delete it.bb;
+            if (Math.abs(S.x - T.x) <= MAG && (!COLT.includes(o.type) || Math.abs(S.y - T.y) <= MAG)) delete it.off; else it.off = { x: Math.round(T.x - S.x), y: Math.round(T.y - S.y) }; }
           else if (false) { it.col = Math.max(1, Math.min(COLS - this.colSpan(o) + 1, o.col + dc)); if (COLT.includes(o.type)) it.r = Math.max(1, Math.min(9, (o.r === undefined ? 5 : o.r) + dr)); }
           else if (o.type === 'LP') { const k2 = this.nearestKey(m); if (k2) it.tip = k2; }
           else if (o.type === 'LA') { /* el analizador es fijo; se mueven sus clips con los tiradores */ }
           else if (['R', 'LED', 'C'].includes(o.type) && d.gp) { const dxp = m.x - d.gp.x, dyp = m.y - d.gp.y, ks = ['a', 'b'].map(q => { const z = keyXY(o[q], this.ctx || this.geom()); return z ? this.snapPx({ x: z.x + dxp, y: z.y + dyp }) : o[q]; });
-            if (ks.every(k => B.parseKey(k).t === 'h') && ['a', 'b'].every(q => B.parseKey(o[q]).t === 'h')) { const nk = ['a', 'b'].map(q => this.shiftKey(o[q], dc, dr, dbb)); if (nk.every(Boolean)) { it.a = nk[0]; it.b = nk[1]; } else { it.a = ks[0]; it.b = ks[1]; } } else { it.a = ks[0]; it.b = ks[1]; } }
+            it.a = ks[0]; it.b = ks[1]; }
           else { const ends = o.type === 'DMM' ? ['red', 'black'] : o.type === 'LP' ? ['tip'] : ['a', 'b']; const nk = ends.map(q => this.shiftKey(o[q], dc, dr, dbb)); if (nk.every(Boolean)) ends.forEach((q, i) => it[q] = nk[i]); } }
         this.dirty = true; }
     }
@@ -2403,7 +2415,7 @@ B.Editor = class {
     const sim = this.sim; this.extraAlerts = this.extraAlerts || [];
     this.board.items.forEach(it => {
       const ix = this.refs[it.id], sp = typeof ix === 'number' ? sim.parts[ix] : null; if (!sp) return;
-      if (!this.fire[it.id]) { const m = sim.overload(sp); if (m) { const nm = it.type === 'IC' ? DSim.IC[it.ic].name + ' ' + (it.label || '') : it.type === 'R' ? 'Resistencia ' + it.v + 'Ω' : it.type === 'LED' ? 'LED' : it.type === 'D7' ? 'Display' : it.type; this.fire[it.id] = nm.trim() + ': ' + m; this.alerted.add(it.id); this.extraAlerts.push('Sobrecarga en ' + nm.trim() + ': ' + m); this.dirty = true; } }
+      if (!this.fire[it.id]) { const m = sim.overload(sp); if (m) { const nm = it.type === 'IC' ? DSim.IC[it.ic].name + ' ' + (it.label || '') : it.type === 'R' ? 'Resistencia ' + it.v + 'Ω' : it.type === 'LED' ? 'LED' : it.type === 'D7' ? 'Display' : it.type === 'SENS' ? ((SC().CAT[it.kind] || {}).name || 'Sensor') : it.type; this.fire[it.id] = nm.trim() + ': ' + m; this.alerted.add(it.id); this.extraAlerts.push('Sobrecarga en ' + nm.trim() + ': ' + m); this.dirty = true; } }
       if (it.type === 'C' && Schem.parseVal(it.v) >= 1e-6 && !this.alerted.has(it.id)) { const v = sim.v[sp.pins[0]] - sim.v[sp.pins[1]]; if (v < -1) { this.alerted.add(it.id); const m = `condensador electrolítico ${it.v}F con la polaridad invertida (${v.toFixed(1).replace('.', ',')} V): puede reventar. La pata + (franja clara = −) va al lado de más tensión.`; this.fire[it.id] = 'Condensador ' + it.v + 'F: ' + m; this.extraAlerts.push('Sobrecarga en ' + m); this.dirty = true; } }
     });
     sim.parts.forEach(p => { if (p.type === 'V' && !this.alerted.has('V' + p.idx)) { const v = sim.v[p.pins[0]]; if (v < p.v * 0.5) { this.alerted.add('V' + p.idx); this.fire.mb = `la alimentación de ${p.v} V cae a ${v.toFixed(2).replace('.', ',')} V: cortocircuito entre +V y GND.`; this.dirty = true; this.extraAlerts.push(`Posible cortocircuito: la alimentación de ${p.v} V cae a ${v.toFixed(2)} V.`); } } });
@@ -2469,7 +2481,7 @@ B.Editor = class {
     if (it.type === 'IC') { const t = this.root.querySelector('#pintab'), ix = this.refs[it.id], sp = this.sim.parts[ix]; if (t && sp) { const d = sp.def; let h = '<table class="pt"><tr><th>Pata</th><th>Nombre</th><th>V</th><th>Nivel</th></tr>';
       for (let k = 1; k <= d.n; k++) { const n = sp.pins[k - 1], v = n != null ? this.sim.v[n] : null; const lv = v == null ? '—' : v >= (sp.fam.kind === 'ttl' ? 2 : 0.7 * (sp.vcc || 5)) ? '1' : v <= (sp.fam.kind === 'ttl' ? 0.8 : 0.3 * (sp.vcc || 5)) ? '0' : '?'; h += `<tr><td>${k}</td><td>${esc(d.pn[k] || '')}</td><td>${v == null ? '—' : v.toFixed(2)}</td><td>${lv}</td></tr>`; }
       t.innerHTML = h + '</table>' + (sp.burned ? '<p class="warn">Integrado dañado.</p>' : ''); } }
-    if (it.type === 'SENS') { const el = this.root.querySelector('#sread'), c = SC().CAT[it.kind], ix = this.refs[it.id]; if (el && c) el.textContent = c.readout ? c.readout(it, typeof ix === 'number' ? this.sim.parts[ix] : null) : ''; }
+    if (it.type === 'SENS') { const el = this.root.querySelector('#sread'), c = SC().CAT[it.kind], ix = this.refs[it.id]; if (el && c) { const sp0 = typeof ix === 'number' ? this.sim.parts[ix] : null; el.textContent = sp0 && sp0.st && sp0.st.burned ? '⚠ QUEMADO: ' + (this.fire[it.id] || 'sobretensión') : c.readout ? c.readout(it, sp0) : ''; } }
     if (it.type === 'DMM') { const el = this.root.querySelector('#dmmv'), r = this.dmmRead(it); if (el) el.textContent = r ? r.text : '—'; }
     if (it.type === 'LP') { const el = this.root.querySelector('#lpv'); if (el) { const q = this.lpState(it); el.textContent = q.s === 'H' ? '1 · alto (' + q.v.toFixed(2) + ' V)' : q.s === 'L' ? '0 · bajo (' + q.v.toFixed(2) + ' V)' : 'Z · alta impedancia (' + q.why + ')'; } }
   }
@@ -2859,7 +2871,7 @@ class McuCtl {
   sample(levels, t, sim) {
     this.t = t - this.t0; this.sim = sim;
     if (!this.booted) { this.booted = true; if (sim.parts.some(q => q.type === 'SENS')) this.wake = Math.max(this.wake, 0.1); }
-    for (const k in this.idxOf) this.inl[k] = levels[this.idxOf[k]];
+    for (const k in this.idxOf) this.inl[k] = (this.dead && this.dead.has(k)) ? 0 : levels[this.idxOf[k]];
     if (this.running && this.gen) {
       let budget = 4000;
       while (this.wake <= this.t && budget-- > 0) { let r; try { r = this.gen.next(); } catch (e) { this.err = 'Error en ejecución: ' + e.message; this.running = false; break; } if (r.done) { this.running = false; break; } this.wake = Math.max(this.wake, this.t - 2e-3) + (typeof r.value === 'number' ? r.value : 0); }
@@ -2870,14 +2882,21 @@ class McuCtl {
         const tn = this.tn[k]; if (tn) { if (this.t >= tn.until) delete this.tn[k]; else v = ((this.t * tn.f) % 1) < 0.5 ? 1 : 0; }
         const sv = this.sv[k]; if (sv) { const dt = sim.dt, per = Math.max(2, Math.round(0.02 / dt)); if (sv.k === 0) { sv.acc += sv.us * 1e-6 / dt; sv.n = Math.floor(sv.acc); sv.acc -= sv.n; } v = sv.k < sv.n ? 1 : 0; sv.k = (sv.k + 1) % per; }
         else if (!v && this.gl[k]) { const f = this.findSens(k); if (f && f.p.kind === 'HCSR04' && f.i === 1) v = 1; }
-        dr[i] = v ? 1 : 2; } else if (m === 2) dr[i] = 3; }
+        dr[i] = v ? 1 : 2; } else if (m === 2) dr[i] = 3; if (this.dead && this.dead.has(k)) dr[i] = 0; }
     this.gl = {};
     this.ledL = (this.out[this.board === 'UNO' ? 13 : 48] || 0) && this.pm[this.board === 'UNO' ? 13 : 48] === 1;
     return dr;
   }
+  /* Protección: un pin con más tensión que su alimentación (+0,5 V) o con más de 40 mA durante unas comprobaciones seguidas
+     queda dañado: deja de leer y de escribir. UNO: máx. absoluto Vcc + 0,5 V (≈ 5,5 V), 40 mA. ESP32-S3: 3,6 V, 40 mA. */
   checkPins(sim) {
-    const lim = this.board === 'UNO' ? 5.6 : 3.7, r = [];
-    for (const k in this.idxOf) { const i = this.idxOf[k], v = sim.v[this.part.pins[i]]; if (v > lim && !this.warned.has(k)) { this.warned.add(k); r.push(`${this.board === 'UNO' ? 'Arduino' : 'ESP32'}: el pin ${this.names[i]} recibe ${v.toFixed(1)} V (máximo ${this.board === 'UNO' ? '5' : '3,3'} V). Riesgo de dañar la placa.`); } }
+    const lim = this.board === 'UNO' ? 5.5 : 3.6, r = [], nm = this.board === 'UNO' ? 'Arduino' : 'ESP32'; this.dead = this.dead || new Set(); this.bad = this.bad || {};
+    for (const k in this.idxOf) { if (this.dead.has(k)) continue; const i = this.idxOf[k], n = this.part.pins[i], v = sim.v[n], pp = this.part;
+      const cur = pp.pk[i] ? Math.abs(pp.pi[i] - pp.pg[i] * v) : 0; let why = null;
+      if (v > lim || v < -0.7) why = `recibe ${v.toFixed(1).replace('.', ',')} V (máximo ${this.board === 'UNO' ? '5' : '3,3'} V)`; else if (cur > 0.04) why = `maneja ${(cur * 1e3).toFixed(0)} mA (máximo 40 mA)`;
+      if (!why) { this.bad[k] = 0; continue; }
+      if (v > lim && !this.warned.has(k)) { this.warned.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Riesgo de dañar la placa.`); }
+      if ((this.bad[k] = (this.bad[k] || 0) + 1) >= 8) { this.dead.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Pin dañado: ya no lee ni escribe.`); } }
     return r;
   }
 }
@@ -2885,59 +2904,6 @@ function fmtNum2(x) { return typeof x === 'number' ? fmtNum(x) : String(x); }
 M.McuCtl = McuCtl;
 
 M.EXAMPLES = {
-  reloj: `// P9.1 · Reloj digital a 10x de velocidad (arranca en 09:58:25)
-unsigned long previo = 0;
-int h = 9, m = 58, s = 25;
-
-void setup() {
-  Serial.begin(9600);
-}
-
-void loop() {
-  unsigned long ahora = millis();
-  if (ahora - previo >= 100) {      // 1 "segundo" = 100 ms a 10x
-    previo += 100;                  // sin acumular error
-    s++;
-    if (s >= 60) { s = 0; m++; }
-    if (m >= 60) { m = 0; h++; }
-    if (h >= 24) { h = 0; }
-    char buf[9];
-    sprintf(buf, "%02d:%02d:%02d", h, m, s);
-    Serial.println(buf);
-  }
-}`,
-  marcador: `// P9.2 · Marcador de fútbol con pulsadores INPUT_PULLUP
-const int BTN_LOCAL = 2, BTN_VISIT = 3, BTN_RESET = 4;
-int local = 0, visit = 0;
-int estLocal = HIGH, estVisit = HIGH, estReset = HIGH;
-unsigned long tLocal = 0, tVisit = 0, tReset = 0;
-LiquidCrystal lcd(12, 11, 5, 4, A0, A1);
-
-void pintar() {
-  char txt[17];
-  sprintf(txt, "%d - %d", local, visit);
-  lcd.setCursor(0, 0);
-  lcd.print("                ");          // borra la línea
-  int col = (16 - strlen(txt)) / 2;       // centrado
-  lcd.setCursor(col, 0);
-  lcd.print(txt);
-}
-
-void setup() {
-  pinMode(BTN_LOCAL, INPUT_PULLUP);
-  pinMode(BTN_VISIT, INPUT_PULLUP);
-  pinMode(BTN_RESET, INPUT_PULLUP);
-  lcd.begin(16, 2);
-  pintar();
-}
-
-void loop() {
-  int l = digitalRead(BTN_LOCAL), v = digitalRead(BTN_VISIT), r = digitalRead(BTN_RESET);
-  unsigned long ahora = millis();
-  if (l != estLocal && ahora - tLocal > 30) { tLocal = ahora; estLocal = l; if (l == LOW) { local++; pintar(); } }
-  if (v != estVisit && ahora - tVisit > 30) { tVisit = ahora; estVisit = v; if (v == LOW) { visit++; pintar(); } }
-  if (r != estReset && ahora - tReset > 30) { tReset = ahora; estReset = r; if (r == LOW) { local = 0; visit = 0; pintar(); } }
-}`,
   blink: `// Parpadeo del LED de la placa y de un LED en el pin 8
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -3111,9 +3077,7 @@ void loop() {
     }
   }
 }` },
-  { id: 'reloj', title: '9 · P9.1 Reloj digital (millis)', code: () => M.EXAMPLES.reloj },
-  { id: 'marcador', title: '10 · P9.2 Marcador de fútbol', code: (p) => M.EXAMPLES.marcador.replace('BTN_LOCAL = 2, BTN_VISIT = 3, BTN_RESET = 4', `BTN_LOCAL = ${p.B}, BTN_VISIT = ${p.B2}, BTN_RESET = ${p.B3}`).replace('LiquidCrystal lcd(12, 11, 5, 4, A0, A1)', `LiquidCrystal lcd(${p.LCD})`) },
-  { id: 'tmp36', title: '11 · Termómetro TMP36 (analogRead)', code: (p) => `// TMP36: Vout = 0,5 V + 10 mV/°C. Conecta +Vs a ${p.AN === 'A0' ? '5 V' : '3,3 V'}, GND a GND y Vout a ${p.AN}.
+  { id: 'tmp36', title: '9 · Termómetro TMP36 (analogRead)', code: (p) => `// TMP36: Vout = 0,5 V + 10 mV/°C. Conecta +Vs a ${p.AN === 'A0' ? '5 V' : '3,3 V'}, GND a GND y Vout a ${p.AN}.
 const int SENSOR = ${p.AN};
 const float VREF = ${p.AN === 'A0' ? '5.0' : '3.3'};
 const int MAXADC = ${p.AN === 'A0' ? '1023' : '4095'};
@@ -3132,7 +3096,7 @@ void loop() {
   Serial.println(" C");
   delay(1000);
 }` },
-  { id: 'ldr', title: '12 · Luz con LDR y divisor (alumbrado automático)', code: (p) => `// Divisor: ${p.AN === 'A0' ? '5 V' : '3,3 V'} → LDR → ${p.AN} → resistencia de 10 kΩ → GND
+  { id: 'ldr', title: '10 · Luz con LDR y divisor (alumbrado automático)', code: (p) => `// Divisor: ${p.AN === 'A0' ? '5 V' : '3,3 V'} → LDR → ${p.AN} → resistencia de 10 kΩ → GND
 // Con poca luz la LDR sube de resistencia y la tensión en ${p.AN} baja.
 // LED con su resistencia en el pin ${p.L}.
 const int LDR = ${p.AN};
@@ -3151,7 +3115,7 @@ void loop() {
   else digitalWrite(LED, LOW);
   delay(200);
 }` },
-  { id: 'ntc', title: '13 · Termistor NTC 10 kΩ (ecuación Beta)', code: (p) => `// Divisor: ${p.AN === 'A0' ? '5 V' : '3,3 V'} → 10 kΩ → ${p.AN} → NTC → GND
+  { id: 'ntc', title: '11 · Termistor NTC 10 kΩ (ecuación Beta)', code: (p) => `// Divisor: ${p.AN === 'A0' ? '5 V' : '3,3 V'} → 10 kΩ → ${p.AN} → NTC → GND
 const int ENTRADA = ${p.AN};
 const int MAXADC = ${p.AN === 'A0' ? '1023' : '4095'};
 const float R0 = 10000.0;     // resistencia a 25 °C
@@ -3173,7 +3137,7 @@ void loop() {
   Serial.println(" C");
   delay(1000);
 }` },
-  { id: 'hcsr04', title: '14 · Distancia con HC-SR04 (pulseIn)', code: (p) => `// HC-SR04: VCC a 5 V, GND, TRIG en el pin ${p.B} y ECHO en el pin ${p.B2}.
+  { id: 'hcsr04', title: '12 · Distancia con HC-SR04 (pulseIn)', code: (p) => `// HC-SR04: VCC a 5 V, GND, TRIG en el pin ${p.B} y ECHO en el pin ${p.B2}.
 ${p.AN === 'A0' ? '' : '// OJO: ECHO sale a 5 V; en el ESP32 (3,3 V) necesita un divisor de tensión.\n'}const int TRIG = ${p.B};
 const int ECHO = ${p.B2};
 
@@ -3196,7 +3160,7 @@ void loop() {
   Serial.println(" cm");
   delay(300);
 }` },
-  { id: 'dht', title: '15 · DHT11/DHT22 temperatura y humedad', code: (p) => `// Módulo DHT de 3 patas: VCC, DATA en el pin ${p.B} y GND.
+  { id: 'dht', title: '13 · DHT11/DHT22 temperatura y humedad', code: (p) => `// Módulo DHT de 3 patas: VCC, DATA en el pin ${p.B} y GND.
 #include <DHT.h>
 #define DHTPIN ${p.B}
 #define DHTTYPE DHT11        // cámbialo a DHT22 si usas ese sensor
@@ -3221,7 +3185,7 @@ void loop() {
   Serial.print(t, 1);
   Serial.println(" C");
 }` },
-  { id: 'ds18b20', title: '16 · DS18B20 (1-Wire)', code: (p) => `// DS18B20: GND, DQ en el pin ${p.B} con resistencia de 4,7 kΩ a VDD, y VDD.
+  { id: 'ds18b20', title: '14 · DS18B20 (1-Wire)', code: (p) => `// DS18B20: GND, DQ en el pin ${p.B} con resistencia de 4,7 kΩ a VDD, y VDD.
 #include <OneWire.h>
 #include <DallasTemperature.h>
 OneWire oneWire(${p.B});
@@ -3243,7 +3207,7 @@ void loop() {
   }
   delay(1000);
 }` },
-  { id: 'pir', title: '17 · Alarma con sensor PIR y zumbador', code: (p) => `// PIR: VCC a 5 V, OUT en el pin ${p.B}, GND. Zumbador activo en el pin ${p.B2} (con su resistencia si es necesario).
+  { id: 'pir', title: '15 · Alarma con sensor PIR y zumbador', code: (p) => `// PIR: VCC a 5 V, OUT en el pin ${p.B}, GND. Zumbador activo en el pin ${p.B2} (con su resistencia si es necesario).
 const int PIR = ${p.B};
 const int ZUMBADOR = ${p.B2};
 bool anterior = false;
@@ -3262,7 +3226,7 @@ void loop() {
   anterior = mov;
   digitalWrite(ZUMBADOR, mov);
 }` },
-  { id: 'servo', title: '18 · Servo controlado con potenciómetro', code: (p) => `// Potenciómetro: extremos a ${p.AN === 'A0' ? '5 V' : '3,3 V'} y GND, cursor en ${p.AN}. Servo: señal en el pin ${p.PWM}, rojo a 5 V, marrón a GND.
+  { id: 'servo', title: '16 · Servo controlado con potenciómetro', code: (p) => `// Potenciómetro: extremos a ${p.AN === 'A0' ? '5 V' : '3,3 V'} y GND, cursor en ${p.AN}. Servo: señal en el pin ${p.PWM}, rojo a 5 V, marrón a GND.
 #include <Servo.h>
 Servo servo;
 const int POT = ${p.AN};
@@ -3280,7 +3244,7 @@ void loop() {
   Serial.println(angulo);
   delay(50);
 }` },
-  { id: 'servo_barrido', title: '19 · Servo: barrido de 0° a 180°', code: (p) => `#include <Servo.h>
+  { id: 'servo_barrido', title: '17 · Servo: barrido de 0° a 180°', code: (p) => `#include <Servo.h>
 Servo servo;
 
 void setup() {
@@ -3297,7 +3261,7 @@ void loop() {
     delay(20);
   }
 }` },
-  { id: 'melodia', title: '20 · Melodía con zumbador pasivo (tone)', code: (p) => `// Zumbador pasivo entre el pin ${p.B2} y GND (con resistencia de 100 Ω en serie).
+  { id: 'melodia', title: '18 · Melodía con zumbador pasivo (tone)', code: (p) => `// Zumbador pasivo entre el pin ${p.B2} y GND (con resistencia de 100 Ω en serie).
 const int ZUMBADOR = ${p.B2};
 int notas[] = {262, 294, 330, 349, 392, 440, 494, 523};   // do, re, mi, fa, sol, la, si, do
 
@@ -3312,7 +3276,7 @@ void loop() {
   noTone(ZUMBADOR);
   delay(1500);
 }` },
-  { id: 'joystick', title: '21 · Joystick analógico', code: (p) => `// KY-023: GND, +5V, VRx → ${p.AN}, VRy → ${p.AN2}, SW → pin ${p.B} (INPUT_PULLUP).
+  { id: 'joystick', title: '19 · Joystick analógico', code: (p) => `// KY-023: GND, +5V, VRx → ${p.AN}, VRy → ${p.AN2}, SW → pin ${p.B} (INPUT_PULLUP).
 const int EJE_X = ${p.AN};
 const int EJE_Y = ${p.AN2};
 const int BOTON = ${p.B};
@@ -3333,7 +3297,7 @@ void loop() {
   Serial.println(digitalRead(BOTON) == LOW ? "SI" : "NO");
   delay(200);
 }` },
-  { id: 'riego', title: '22 · Riego automático (humedad de suelo + relé)', code: (p) => `// Sensor FC-28: VCC, GND y AO en ${p.AN}. Módulo relé: VCC a 5 V, GND y IN en el pin ${p.B} (se activa con nivel BAJO).
+  { id: 'riego', title: '20 · Riego automático (humedad de suelo + relé)', code: (p) => `// Sensor FC-28: VCC, GND y AO en ${p.AN}. Módulo relé: VCC a 5 V, GND y IN en el pin ${p.B} (se activa con nivel BAJO).
 const int SUELO = ${p.AN};
 const int RELE = ${p.B};
 const int SECO = ${p.AN === 'A0' ? 600 : 2400};     // por encima = suelo seco
@@ -3356,7 +3320,7 @@ void loop() {
   Serial.println(regando ? "  -> REGANDO" : "  -> parado");
   delay(500);
 }` },
-  { id: 'rgb', title: '23 · LED RGB con analogWrite', code: (p) => `// LED RGB de cátodo común: R, G y B a los pines ${p.L}, ${p.L2} y ${p.L3} (cada uno con 220 Ω); el cátodo a GND.
+  { id: 'rgb', title: '21 · LED RGB con analogWrite', code: (p) => `// LED RGB de cátodo común: R, G y B a los pines ${p.L}, ${p.L2} y ${p.L3} (cada uno con 220 Ω); el cátodo a GND.
 const int ROJO = ${p.L}, VERDE = ${p.L2}, AZUL = ${p.L3};
 
 void setup() {
@@ -3370,7 +3334,7 @@ void loop() {
     delay(30);
   }
 }` },
-  { id: 'i2cscan', title: '16 · Escáner I²C', code: (p) => `// Muestra las direcciones I²C que responden (SDA/SCL del bus por defecto).
+  { id: 'i2cscan', title: '22 · Escáner I²C', code: (p) => `// Muestra las direcciones I²C que responden (SDA/SCL del bus por defecto).
 #include <Wire.h>
 void setup() { Wire.begin(); Serial.begin(9600); }
 void loop() {
@@ -3383,7 +3347,7 @@ void loop() {
   delay(5000);
 }
 ` },
-  { id: 'bmp280', title: '17 · BMP280 temperatura y presión (I²C)', code: (p) => `// BMP280: VCC 3,3 V, GND, SDA y SCL al bus I²C. SDO a GND = 0x76.
+  { id: 'bmp280', title: '23 · BMP280 temperatura y presión (I²C)', code: (p) => `// BMP280: VCC 3,3 V, GND, SDA y SCL al bus I²C. SDO a GND = 0x76.
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
 Adafruit_BMP280 bmp;
@@ -3398,7 +3362,7 @@ void loop() {
   delay(1000);
 }
 ` },
-  { id: 'mpu6050', title: '18 · MPU6050 acelerómetro y giroscopio (I²C)', code: (p) => `// MPU6050 (dirección 0x68 con AD0 a GND).
+  { id: 'mpu6050', title: '24 · MPU6050 acelerómetro y giroscopio (I²C)', code: (p) => `// MPU6050 (dirección 0x68 con AD0 a GND).
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 Adafruit_MPU6050 mpu;
@@ -3418,7 +3382,7 @@ void loop() {
   delay(500);
 }
 ` },
-  { id: 'oled', title: '19 · Pantalla OLED SSD1306 128×64 (I²C)', code: (p) => `#include <Wire.h>
+  { id: 'oled', title: '25 · Pantalla OLED SSD1306 128×64 (I²C)', code: (p) => `#include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
@@ -3435,7 +3399,7 @@ void setup() {
 }
 void loop() {}
 ` },
-  { id: 'mcp3008', title: '20 · MCP3008 ADC de 8 canales (SPI)', code: (p) => `// MCP3008: CLK, DOUT (MISO), DIN (MOSI) y CS a los pines SPI; VDD y VREF a 5 V.
+  { id: 'mcp3008', title: '26 · MCP3008 ADC de 8 canales (SPI)', code: (p) => `// MCP3008: CLK, DOUT (MISO), DIN (MOSI) y CS a los pines SPI; VDD y VREF a 5 V.
 #include <SPI.h>
 #include <Adafruit_MCP3008.h>
 Adafruit_MCP3008 adc;
@@ -4318,6 +4282,8 @@ function buildGuide() {
   <li><b>Sensores</b>: potenciómetro, joystick KY-023, LDR, NTC 10 kΩ, TMP36, LM35, DHT11, DHT22, DS18B20, HC-SR04, PIR HC-SR501, humedad de suelo FC-28, gas MQ-2 y llama IR. <b>Actuadores</b>: servo SG90, zumbador activo y pasivo (suenan de verdad), módulo relé, motor DC y LED RGB.</li>
   <li><b>Programación</b>: en el editor de la placa funcionan <code>pulseIn</code>, <code>tone/noTone</code>, <code>analogWrite</code>, <code>Servo.h</code>, <code>DHT.h</code>, <code>OneWire.h</code> y <code>DallasTemperature.h</code>. Hay un ejemplo de cada sensor en la lista de ejemplos del editor.</li>
   <li><b>Buses I²C y SPI</b>: BMP280, MPU6050 y OLED SSD1306 (I²C: SDA/SCL del UNO = A4/A5, del ESP32-S3 = GPIO8/9) y ADC MCP3008 (SPI). Cablea como en la realidad: el dispositivo solo responde si está alimentado y sus patillas van a los pines del bus. Se emulan a nivel de librería (Wire, SPI, Adafruit_BMP280, Adafruit_MPU6050, Adafruit_SSD1306, MCP3008), sin temporización de bits.</li>
+  <li><b>Arrastrar piezas</b>: se mueven con libertad; solo se «imantan» a un agujero cuando quedan a menos de unos 6 px. Una pieza que queda entre agujeros no conecta con nada.</li>
+  <li><b>Protección</b>: los sensores y actuadores se queman si se alimentan por encima de su máximo absoluto (p. ej. DHT 6 V, TMP36 7 V) o con la polaridad invertida. En la placa, un pin con más de 5,5 V (UNO) o 3,6 V (ESP32-S3), o que maneje más de 40 mA durante un rato, queda dañado y deja de leer y escribir. Un LED sin resistencia se funde antes que el pin. Al reiniciar la simulación todo vuelve a estar sano.</li>
   <li><b>Segunda protoboard</b>: botón «Protoboard 2 (debajo)» en «Alimentación y placas». Sus carriles no tienen alimentación: llévala con cables desde la primera.</li>
   <li><b>Límites</b>: los pulsos de menos de un paso de simulación (50 µs por defecto) no se ven: el HC-SR04 los ensancha un paso, y el servo mide la anchura con esa resolución. El motor no simula el pico inductivo al cortar la corriente.</li></ul>
   <h3>Enunciados de las prácticas</h3>

@@ -186,7 +186,7 @@ class McuCtl {
   sample(levels, t, sim) {
     this.t = t - this.t0; this.sim = sim;
     if (!this.booted) { this.booted = true; if (sim.parts.some(q => q.type === 'SENS')) this.wake = Math.max(this.wake, 0.1); }
-    for (const k in this.idxOf) this.inl[k] = levels[this.idxOf[k]];
+    for (const k in this.idxOf) this.inl[k] = (this.dead && this.dead.has(k)) ? 0 : levels[this.idxOf[k]];
     if (this.running && this.gen) {
       let budget = 4000;
       while (this.wake <= this.t && budget-- > 0) { let r; try { r = this.gen.next(); } catch (e) { this.err = 'Error en ejecución: ' + e.message; this.running = false; break; } if (r.done) { this.running = false; break; } this.wake = Math.max(this.wake, this.t - 2e-3) + (typeof r.value === 'number' ? r.value : 0); }
@@ -197,14 +197,21 @@ class McuCtl {
         const tn = this.tn[k]; if (tn) { if (this.t >= tn.until) delete this.tn[k]; else v = ((this.t * tn.f) % 1) < 0.5 ? 1 : 0; }
         const sv = this.sv[k]; if (sv) { const dt = sim.dt, per = Math.max(2, Math.round(0.02 / dt)); if (sv.k === 0) { sv.acc += sv.us * 1e-6 / dt; sv.n = Math.floor(sv.acc); sv.acc -= sv.n; } v = sv.k < sv.n ? 1 : 0; sv.k = (sv.k + 1) % per; }
         else if (!v && this.gl[k]) { const f = this.findSens(k); if (f && f.p.kind === 'HCSR04' && f.i === 1) v = 1; }
-        dr[i] = v ? 1 : 2; } else if (m === 2) dr[i] = 3; }
+        dr[i] = v ? 1 : 2; } else if (m === 2) dr[i] = 3; if (this.dead && this.dead.has(k)) dr[i] = 0; }
     this.gl = {};
     this.ledL = (this.out[this.board === 'UNO' ? 13 : 48] || 0) && this.pm[this.board === 'UNO' ? 13 : 48] === 1;
     return dr;
   }
+  /* Protección: un pin con más tensión que su alimentación (+0,5 V) o con más de 40 mA durante unas comprobaciones seguidas
+     queda dañado: deja de leer y de escribir. UNO: máx. absoluto Vcc + 0,5 V (≈ 5,5 V), 40 mA. ESP32-S3: 3,6 V, 40 mA. */
   checkPins(sim) {
-    const lim = this.board === 'UNO' ? 5.6 : 3.7, r = [];
-    for (const k in this.idxOf) { const i = this.idxOf[k], v = sim.v[this.part.pins[i]]; if (v > lim && !this.warned.has(k)) { this.warned.add(k); r.push(`${this.board === 'UNO' ? 'Arduino' : 'ESP32'}: el pin ${this.names[i]} recibe ${v.toFixed(1)} V (máximo ${this.board === 'UNO' ? '5' : '3,3'} V). Riesgo de dañar la placa.`); } }
+    const lim = this.board === 'UNO' ? 5.5 : 3.6, r = [], nm = this.board === 'UNO' ? 'Arduino' : 'ESP32'; this.dead = this.dead || new Set(); this.bad = this.bad || {};
+    for (const k in this.idxOf) { if (this.dead.has(k)) continue; const i = this.idxOf[k], n = this.part.pins[i], v = sim.v[n], pp = this.part;
+      const cur = pp.pk[i] ? Math.abs(pp.pi[i] - pp.pg[i] * v) : 0; let why = null;
+      if (v > lim || v < -0.7) why = `recibe ${v.toFixed(1).replace('.', ',')} V (máximo ${this.board === 'UNO' ? '5' : '3,3'} V)`; else if (cur > 0.04) why = `maneja ${(cur * 1e3).toFixed(0)} mA (máximo 40 mA)`;
+      if (!why) { this.bad[k] = 0; continue; }
+      if (v > lim && !this.warned.has(k)) { this.warned.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Riesgo de dañar la placa.`); }
+      if ((this.bad[k] = (this.bad[k] || 0) + 1) >= 8) { this.dead.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Pin dañado: ya no lee ni escribe.`); } }
     return r;
   }
 }
@@ -212,59 +219,6 @@ function fmtNum2(x) { return typeof x === 'number' ? fmtNum(x) : String(x); }
 M.McuCtl = McuCtl;
 
 M.EXAMPLES = {
-  reloj: `// P9.1 · Reloj digital a 10x de velocidad (arranca en 09:58:25)
-unsigned long previo = 0;
-int h = 9, m = 58, s = 25;
-
-void setup() {
-  Serial.begin(9600);
-}
-
-void loop() {
-  unsigned long ahora = millis();
-  if (ahora - previo >= 100) {      // 1 "segundo" = 100 ms a 10x
-    previo += 100;                  // sin acumular error
-    s++;
-    if (s >= 60) { s = 0; m++; }
-    if (m >= 60) { m = 0; h++; }
-    if (h >= 24) { h = 0; }
-    char buf[9];
-    sprintf(buf, "%02d:%02d:%02d", h, m, s);
-    Serial.println(buf);
-  }
-}`,
-  marcador: `// P9.2 · Marcador de fútbol con pulsadores INPUT_PULLUP
-const int BTN_LOCAL = 2, BTN_VISIT = 3, BTN_RESET = 4;
-int local = 0, visit = 0;
-int estLocal = HIGH, estVisit = HIGH, estReset = HIGH;
-unsigned long tLocal = 0, tVisit = 0, tReset = 0;
-LiquidCrystal lcd(12, 11, 5, 4, A0, A1);
-
-void pintar() {
-  char txt[17];
-  sprintf(txt, "%d - %d", local, visit);
-  lcd.setCursor(0, 0);
-  lcd.print("                ");          // borra la línea
-  int col = (16 - strlen(txt)) / 2;       // centrado
-  lcd.setCursor(col, 0);
-  lcd.print(txt);
-}
-
-void setup() {
-  pinMode(BTN_LOCAL, INPUT_PULLUP);
-  pinMode(BTN_VISIT, INPUT_PULLUP);
-  pinMode(BTN_RESET, INPUT_PULLUP);
-  lcd.begin(16, 2);
-  pintar();
-}
-
-void loop() {
-  int l = digitalRead(BTN_LOCAL), v = digitalRead(BTN_VISIT), r = digitalRead(BTN_RESET);
-  unsigned long ahora = millis();
-  if (l != estLocal && ahora - tLocal > 30) { tLocal = ahora; estLocal = l; if (l == LOW) { local++; pintar(); } }
-  if (v != estVisit && ahora - tVisit > 30) { tVisit = ahora; estVisit = v; if (v == LOW) { visit++; pintar(); } }
-  if (r != estReset && ahora - tReset > 30) { tReset = ahora; estReset = r; if (r == LOW) { local = 0; visit = 0; pintar(); } }
-}`,
   blink: `// Parpadeo del LED de la placa y de un LED en el pin 8
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -438,9 +392,7 @@ void loop() {
     }
   }
 }` },
-  { id: 'reloj', title: '9 · P9.1 Reloj digital (millis)', code: () => M.EXAMPLES.reloj },
-  { id: 'marcador', title: '10 · P9.2 Marcador de fútbol', code: (p) => M.EXAMPLES.marcador.replace('BTN_LOCAL = 2, BTN_VISIT = 3, BTN_RESET = 4', `BTN_LOCAL = ${p.B}, BTN_VISIT = ${p.B2}, BTN_RESET = ${p.B3}`).replace('LiquidCrystal lcd(12, 11, 5, 4, A0, A1)', `LiquidCrystal lcd(${p.LCD})`) },
-  { id: 'tmp36', title: '11 · Termómetro TMP36 (analogRead)', code: (p) => `// TMP36: Vout = 0,5 V + 10 mV/°C. Conecta +Vs a ${p.AN === 'A0' ? '5 V' : '3,3 V'}, GND a GND y Vout a ${p.AN}.
+  { id: 'tmp36', title: '9 · Termómetro TMP36 (analogRead)', code: (p) => `// TMP36: Vout = 0,5 V + 10 mV/°C. Conecta +Vs a ${p.AN === 'A0' ? '5 V' : '3,3 V'}, GND a GND y Vout a ${p.AN}.
 const int SENSOR = ${p.AN};
 const float VREF = ${p.AN === 'A0' ? '5.0' : '3.3'};
 const int MAXADC = ${p.AN === 'A0' ? '1023' : '4095'};
@@ -459,7 +411,7 @@ void loop() {
   Serial.println(" C");
   delay(1000);
 }` },
-  { id: 'ldr', title: '12 · Luz con LDR y divisor (alumbrado automático)', code: (p) => `// Divisor: ${p.AN === 'A0' ? '5 V' : '3,3 V'} → LDR → ${p.AN} → resistencia de 10 kΩ → GND
+  { id: 'ldr', title: '10 · Luz con LDR y divisor (alumbrado automático)', code: (p) => `// Divisor: ${p.AN === 'A0' ? '5 V' : '3,3 V'} → LDR → ${p.AN} → resistencia de 10 kΩ → GND
 // Con poca luz la LDR sube de resistencia y la tensión en ${p.AN} baja.
 // LED con su resistencia en el pin ${p.L}.
 const int LDR = ${p.AN};
@@ -478,7 +430,7 @@ void loop() {
   else digitalWrite(LED, LOW);
   delay(200);
 }` },
-  { id: 'ntc', title: '13 · Termistor NTC 10 kΩ (ecuación Beta)', code: (p) => `// Divisor: ${p.AN === 'A0' ? '5 V' : '3,3 V'} → 10 kΩ → ${p.AN} → NTC → GND
+  { id: 'ntc', title: '11 · Termistor NTC 10 kΩ (ecuación Beta)', code: (p) => `// Divisor: ${p.AN === 'A0' ? '5 V' : '3,3 V'} → 10 kΩ → ${p.AN} → NTC → GND
 const int ENTRADA = ${p.AN};
 const int MAXADC = ${p.AN === 'A0' ? '1023' : '4095'};
 const float R0 = 10000.0;     // resistencia a 25 °C
@@ -500,7 +452,7 @@ void loop() {
   Serial.println(" C");
   delay(1000);
 }` },
-  { id: 'hcsr04', title: '14 · Distancia con HC-SR04 (pulseIn)', code: (p) => `// HC-SR04: VCC a 5 V, GND, TRIG en el pin ${p.B} y ECHO en el pin ${p.B2}.
+  { id: 'hcsr04', title: '12 · Distancia con HC-SR04 (pulseIn)', code: (p) => `// HC-SR04: VCC a 5 V, GND, TRIG en el pin ${p.B} y ECHO en el pin ${p.B2}.
 ${p.AN === 'A0' ? '' : '// OJO: ECHO sale a 5 V; en el ESP32 (3,3 V) necesita un divisor de tensión.\n'}const int TRIG = ${p.B};
 const int ECHO = ${p.B2};
 
@@ -523,7 +475,7 @@ void loop() {
   Serial.println(" cm");
   delay(300);
 }` },
-  { id: 'dht', title: '15 · DHT11/DHT22 temperatura y humedad', code: (p) => `// Módulo DHT de 3 patas: VCC, DATA en el pin ${p.B} y GND.
+  { id: 'dht', title: '13 · DHT11/DHT22 temperatura y humedad', code: (p) => `// Módulo DHT de 3 patas: VCC, DATA en el pin ${p.B} y GND.
 #include <DHT.h>
 #define DHTPIN ${p.B}
 #define DHTTYPE DHT11        // cámbialo a DHT22 si usas ese sensor
@@ -548,7 +500,7 @@ void loop() {
   Serial.print(t, 1);
   Serial.println(" C");
 }` },
-  { id: 'ds18b20', title: '16 · DS18B20 (1-Wire)', code: (p) => `// DS18B20: GND, DQ en el pin ${p.B} con resistencia de 4,7 kΩ a VDD, y VDD.
+  { id: 'ds18b20', title: '14 · DS18B20 (1-Wire)', code: (p) => `// DS18B20: GND, DQ en el pin ${p.B} con resistencia de 4,7 kΩ a VDD, y VDD.
 #include <OneWire.h>
 #include <DallasTemperature.h>
 OneWire oneWire(${p.B});
@@ -570,7 +522,7 @@ void loop() {
   }
   delay(1000);
 }` },
-  { id: 'pir', title: '17 · Alarma con sensor PIR y zumbador', code: (p) => `// PIR: VCC a 5 V, OUT en el pin ${p.B}, GND. Zumbador activo en el pin ${p.B2} (con su resistencia si es necesario).
+  { id: 'pir', title: '15 · Alarma con sensor PIR y zumbador', code: (p) => `// PIR: VCC a 5 V, OUT en el pin ${p.B}, GND. Zumbador activo en el pin ${p.B2} (con su resistencia si es necesario).
 const int PIR = ${p.B};
 const int ZUMBADOR = ${p.B2};
 bool anterior = false;
@@ -589,7 +541,7 @@ void loop() {
   anterior = mov;
   digitalWrite(ZUMBADOR, mov);
 }` },
-  { id: 'servo', title: '18 · Servo controlado con potenciómetro', code: (p) => `// Potenciómetro: extremos a ${p.AN === 'A0' ? '5 V' : '3,3 V'} y GND, cursor en ${p.AN}. Servo: señal en el pin ${p.PWM}, rojo a 5 V, marrón a GND.
+  { id: 'servo', title: '16 · Servo controlado con potenciómetro', code: (p) => `// Potenciómetro: extremos a ${p.AN === 'A0' ? '5 V' : '3,3 V'} y GND, cursor en ${p.AN}. Servo: señal en el pin ${p.PWM}, rojo a 5 V, marrón a GND.
 #include <Servo.h>
 Servo servo;
 const int POT = ${p.AN};
@@ -607,7 +559,7 @@ void loop() {
   Serial.println(angulo);
   delay(50);
 }` },
-  { id: 'servo_barrido', title: '19 · Servo: barrido de 0° a 180°', code: (p) => `#include <Servo.h>
+  { id: 'servo_barrido', title: '17 · Servo: barrido de 0° a 180°', code: (p) => `#include <Servo.h>
 Servo servo;
 
 void setup() {
@@ -624,7 +576,7 @@ void loop() {
     delay(20);
   }
 }` },
-  { id: 'melodia', title: '20 · Melodía con zumbador pasivo (tone)', code: (p) => `// Zumbador pasivo entre el pin ${p.B2} y GND (con resistencia de 100 Ω en serie).
+  { id: 'melodia', title: '18 · Melodía con zumbador pasivo (tone)', code: (p) => `// Zumbador pasivo entre el pin ${p.B2} y GND (con resistencia de 100 Ω en serie).
 const int ZUMBADOR = ${p.B2};
 int notas[] = {262, 294, 330, 349, 392, 440, 494, 523};   // do, re, mi, fa, sol, la, si, do
 
@@ -639,7 +591,7 @@ void loop() {
   noTone(ZUMBADOR);
   delay(1500);
 }` },
-  { id: 'joystick', title: '21 · Joystick analógico', code: (p) => `// KY-023: GND, +5V, VRx → ${p.AN}, VRy → ${p.AN2}, SW → pin ${p.B} (INPUT_PULLUP).
+  { id: 'joystick', title: '19 · Joystick analógico', code: (p) => `// KY-023: GND, +5V, VRx → ${p.AN}, VRy → ${p.AN2}, SW → pin ${p.B} (INPUT_PULLUP).
 const int EJE_X = ${p.AN};
 const int EJE_Y = ${p.AN2};
 const int BOTON = ${p.B};
@@ -660,7 +612,7 @@ void loop() {
   Serial.println(digitalRead(BOTON) == LOW ? "SI" : "NO");
   delay(200);
 }` },
-  { id: 'riego', title: '22 · Riego automático (humedad de suelo + relé)', code: (p) => `// Sensor FC-28: VCC, GND y AO en ${p.AN}. Módulo relé: VCC a 5 V, GND y IN en el pin ${p.B} (se activa con nivel BAJO).
+  { id: 'riego', title: '20 · Riego automático (humedad de suelo + relé)', code: (p) => `// Sensor FC-28: VCC, GND y AO en ${p.AN}. Módulo relé: VCC a 5 V, GND y IN en el pin ${p.B} (se activa con nivel BAJO).
 const int SUELO = ${p.AN};
 const int RELE = ${p.B};
 const int SECO = ${p.AN === 'A0' ? 600 : 2400};     // por encima = suelo seco
@@ -683,7 +635,7 @@ void loop() {
   Serial.println(regando ? "  -> REGANDO" : "  -> parado");
   delay(500);
 }` },
-  { id: 'rgb', title: '23 · LED RGB con analogWrite', code: (p) => `// LED RGB de cátodo común: R, G y B a los pines ${p.L}, ${p.L2} y ${p.L3} (cada uno con 220 Ω); el cátodo a GND.
+  { id: 'rgb', title: '21 · LED RGB con analogWrite', code: (p) => `// LED RGB de cátodo común: R, G y B a los pines ${p.L}, ${p.L2} y ${p.L3} (cada uno con 220 Ω); el cátodo a GND.
 const int ROJO = ${p.L}, VERDE = ${p.L2}, AZUL = ${p.L3};
 
 void setup() {
@@ -697,7 +649,7 @@ void loop() {
     delay(30);
   }
 }` },
-  { id: 'i2cscan', title: '16 · Escáner I²C', code: (p) => `// Muestra las direcciones I²C que responden (SDA/SCL del bus por defecto).
+  { id: 'i2cscan', title: '22 · Escáner I²C', code: (p) => `// Muestra las direcciones I²C que responden (SDA/SCL del bus por defecto).
 #include <Wire.h>
 void setup() { Wire.begin(); Serial.begin(9600); }
 void loop() {
@@ -710,7 +662,7 @@ void loop() {
   delay(5000);
 }
 ` },
-  { id: 'bmp280', title: '17 · BMP280 temperatura y presión (I²C)', code: (p) => `// BMP280: VCC 3,3 V, GND, SDA y SCL al bus I²C. SDO a GND = 0x76.
+  { id: 'bmp280', title: '23 · BMP280 temperatura y presión (I²C)', code: (p) => `// BMP280: VCC 3,3 V, GND, SDA y SCL al bus I²C. SDO a GND = 0x76.
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
 Adafruit_BMP280 bmp;
@@ -725,7 +677,7 @@ void loop() {
   delay(1000);
 }
 ` },
-  { id: 'mpu6050', title: '18 · MPU6050 acelerómetro y giroscopio (I²C)', code: (p) => `// MPU6050 (dirección 0x68 con AD0 a GND).
+  { id: 'mpu6050', title: '24 · MPU6050 acelerómetro y giroscopio (I²C)', code: (p) => `// MPU6050 (dirección 0x68 con AD0 a GND).
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 Adafruit_MPU6050 mpu;
@@ -745,7 +697,7 @@ void loop() {
   delay(500);
 }
 ` },
-  { id: 'oled', title: '19 · Pantalla OLED SSD1306 128×64 (I²C)', code: (p) => `#include <Wire.h>
+  { id: 'oled', title: '25 · Pantalla OLED SSD1306 128×64 (I²C)', code: (p) => `#include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
@@ -762,7 +714,7 @@ void setup() {
 }
 void loop() {}
 ` },
-  { id: 'mcp3008', title: '20 · MCP3008 ADC de 8 canales (SPI)', code: (p) => `// MCP3008: CLK, DOUT (MISO), DIN (MOSI) y CS a los pines SPI; VDD y VREF a 5 V.
+  { id: 'mcp3008', title: '26 · MCP3008 ADC de 8 canales (SPI)', code: (p) => `// MCP3008: CLK, DOUT (MISO), DIN (MOSI) y CS a los pines SPI; VDD y VREF a 5 V.
 #include <SPI.h>
 #include <Adafruit_MCP3008.h>
 Adafruit_MCP3008 adc;
