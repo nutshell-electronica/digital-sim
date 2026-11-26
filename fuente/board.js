@@ -279,7 +279,7 @@ B.Editor = class {
       o.id = 'b' + b.nid++; b.items.push(o); this.sel = o.id; return o; };
     if (preview && (ty === 'MCU' || ty === 'MB102' || ty === 'BB2')) return;
     if (ty === 'BB2') { this.toggleBB2(); return; }
-    if (ty === 'MCU') { this.board.mcu = arg === 'none' ? null : { board: arg, code: this.board.mcu && this.board.mcu.code }; this.sel = this.board.mcu ? 'mcu' : null; this.changed(); this.onChange && this.onChange('mcu'); return; }
+    if (ty === 'MCU') { this.board.mcu = arg === 'none' ? null : { board: arg, code: this.board.mcu && this.board.mcu.code }; this.mcuHide = false; this.sel = this.board.mcu ? 'mcu' : null; this.changed(); this.onChange && this.onChange('mcu'); return; }
     if (ty === 'MB102') { this.board.mb.on = true; this.changed(); return; }
     const k = this.nearestKey(d) || this.nearestHole(d), p = B.parseKey(k), hh = this.nearestHole(d), hp = B.parseKey(hh);
     const c0 = hp.col, row = hp.row, bbv = hp.bb === 2 ? 2 : undefined, cl = (c) => Math.max(1, Math.min(COLS, c));
@@ -310,7 +310,7 @@ B.Editor = class {
     if (t.closest && t.closest('[data-mbbox]')) { const m = this.board.mb, opts = [{ v: '0', t: '0 V' }, { v: '3.3', t: '3,3 V' }, { v: '5', t: '5 V' }];
       UI.pop(cv, e.clientX, e.clientY, 'Fuente MB102', [{ k: 'on', label: 'Conectada (interruptor)', type: 'check', value: m.on }, { k: 'top', label: 'Carril superior', type: 'sel', opts, value: String(m.top) }, { k: 'bot', label: 'Carril inferior', type: 'sel', opts, value: String(m.bot) }],
         (k, v) => { m[k] = k === 'on' ? v : +v; this.changed(); }); return; }
-    if (t.closest && t.closest('[data-mcubox]')) { this.sel = 'mcu'; this.showProps(); return; }
+    if (t.closest && t.closest('[data-mcubox]')) { this.sel = 'mcu'; this.mcuHide = false; this.showProps(); return; }
     if (!g) return; const it = this.board.items.find(i => i.id === g.dataset.id); if (!it) return; this.sel = it.id; this.dirty = true;
     const F = [], nm = it.type === 'IC' ? DSim.IC[it.ic].name : B.PARTS[it.type].name; let before = '';
     if (it.type === 'R') F.push({ k: 'v', label: 'Resistencia (Ω). Ej.: 330, 4.7k, 1M', type: 'text', value: it.v, list: UI.E12 });
@@ -332,7 +332,7 @@ B.Editor = class {
       if (hk) { const k2 = hk.dataset.k; if (k2 === wf.from && !wf.pts.length) { this.wf = null; this.hint('Cable cancelado.'); this.dirty = true; return; }
         const b = this.board, w = { id: 'b' + b.nid++, type: 'WIRE', a: wf.from, b: k2, color: wf.color || this.autoColor(wf.from, k2) }; if (wf.pts.length) w.pts = wf.pts.slice(); b.items.push(w); this.sel = w.id; this.wf = null; this.hint(''); this.changed(); return; }
       wf.pts.push(nudge(p)); this.hint('Codo añadido. Sigue picando para más codos y termina en un agujero (Esc cancela).'); this.dirty = true; return; }
-    const mcb = t.closest && t.closest('[data-mcubox]'); if (mcb && !hk && !this.tool && e.button === 0) { this.sel = 'mcu'; const mp = this.board.mcu.pos || { x: 0, y: 0 }; this.dr = { id: null, kind: 'mcu', ox: p.x - mp.x, oy: p.y - mp.y, moved: false, sx: e.clientX, sy: e.clientY }; this.hint('Placa seleccionada: arrástrala para moverla · Supr la elimina · doble clic abre su programa.'); this.showProps(); this.dirty = true; return; }
+    const mcb = t.closest && t.closest('[data-mcubox]'); if (mcb && !hk && !this.tool && e.button === 0) { this.sel = 'mcu'; if (this.mcuHide) { this.mcuHide = false; this.showProps(); } const mp = this.board.mcu.pos || { x: 0, y: 0 }; this.dr = { id: null, kind: 'mcu', ox: p.x - mp.x, oy: p.y - mp.y, moved: false, sx: e.clientX, sy: e.clientY }; this.hint('Placa seleccionada: arrástrala para moverla · Supr la elimina · doble clic abre su programa.'); this.showProps(); this.dirty = true; return; }
     const mj = t.closest && t.closest('[data-mbj]'); if (mj) { const m = this.board.mb, k = mj.dataset.mbj, seq = [5, 3.3, 0], i = seq.indexOf(m[k]); m[k] = seq[(i + 1) % 3]; this.changed(); return; }
     const lc = t.closest && t.closest('[data-lach]'); if (lc) { this.dr = { id: lc.dataset.item, kind: 'lach', idx: lc.dataset.lach, moved: false, sx: e.clientX, sy: e.clientY }; this.sel = lc.dataset.item; this.dirty = true; return; }
     const bb = t.closest && t.closest('[data-bbody]'); if (bb && !t.closest('[data-dmode],[data-lach]') && !this.tool) { const it = this.board.items.find(i => i.id === bb.dataset.bbody); const o = it.bpos || { x: +bb.dataset.bx, y: +bb.dataset.by }; this.sel = it.id; this.showProps(); this.dr = { id: it.id, kind: 'bbody', ox: p.x - o.x, oy: p.y - o.y, moved: false, sx: e.clientX, sy: e.clientY }; this.dirty = true; return; }
@@ -474,10 +474,9 @@ B.Editor = class {
   showProps() { this.propsFor = this.sel; this.renderProps(); }
   renderProps() {
     const pe = this.root.querySelector('#bprops'), b = this.board, it = b.items.find(i => i.id === this.sel);
-    const mon = this.sel === 'mcu' && !!b.mcu, pm = this.root.querySelector('#bmcu');
-    this.root.classList.toggle('mcusel', mon); if (pm) pm.hidden = !mon; pe.hidden = mon; this.root.querySelector('#bph').textContent = mon ? 'Programa de la placa · ' + (b.mcu.board === 'UNO' ? 'Arduino UNO' : 'ESP32-S3 DevKitC-1') : 'Banco';
+    const mon = !!b.mcu && !this.mcuHide, pm = this.root.querySelector('#bmcu');
+    this.root.classList.toggle('mcusel', mon); if (pm) pm.hidden = !mon; pe.hidden = false; this.root.querySelector('#bph').textContent = mon ? 'Programa de la placa · ' + (b.mcu.board === 'UNO' ? 'Arduino UNO' : 'ESP32-S3 DevKitC-1') + ' · y banco' : 'Banco';
     if (this._mon !== mon) { this._mon = mon; this.onChange && this.onChange('mcusel', mon); }
-    if (mon) return;
     if (this.msel && this.msel.size > 1) { pe.innerHTML = `<h4>${this.msel.size} elementos seleccionados</h4><p class="mut">Arrastra cualquiera de ellos para moverlos en bloque. Mayús + clic añade o quita elementos. Esc deselecciona.</p><button class="b sm" data-del>Eliminar selección</button>`; const d0 = pe.querySelector('[data-del]'); d0.onclick = () => this.removeSel(); return; }
     let h = '';
     h += `<div class="ph">Fuente MB102</div><label class="chk"><input type="checkbox" data-mb="on" ${b.mb.on ? 'checked' : ''}> conectada (interruptor)</label><label>Carril superior<select data-mb="top"><option value="0" ${!b.mb.top ? 'selected' : ''}>0 V</option><option value="3.3" ${b.mb.top === 3.3 ? 'selected' : ''}>3,3 V</option><option value="5" ${b.mb.top === 5 ? 'selected' : ''}>5 V</option></select></label><label>Carril inferior<select data-mb="bot"><option value="0" ${!b.mb.bot ? 'selected' : ''}>0 V</option><option value="3.3" ${b.mb.bot === 3.3 ? 'selected' : ''}>3,3 V</option><option value="5" ${b.mb.bot === 5 ? 'selected' : ''}>5 V</option></select></label>`;
@@ -501,12 +500,25 @@ B.Editor = class {
     pe.querySelectorAll('[data-ip]').forEach(i => i.onchange = () => { it[i.dataset.ip] = i.value; this.changed(); });
     const d = pe.querySelector('[data-del]'); if (d) d.onclick = () => this.removeSel();
   }
+  stimHTML(it) { const c = SC().CAT[it.kind]; let h = '';
+    (c.stim || []).forEach(q => { const v = it.stim[q.k];
+      if (q.type === 'bool') h += `<label class="chk hs-c"><input type="checkbox" data-sk="${q.k}" ${v ? 'checked' : ''}> ${esc(q.label)}</label>`;
+      else if (q.type === 'btn') h += `<button class="b sm" data-sk="${q.k}">${esc(q.label)}</button>`;
+      else h += `<label class="hs-c">${esc(q.label)} <b data-sv="${q.k}">${this.fmtStim(it, q.k)}</b><input type="range" data-sk="${q.k}" ${q.log ? `min="${Math.log10(q.min)}" max="${Math.log10(q.max)}" step="0.01" value="${Math.log10(Math.max(v, q.min))}"` : `min="${q.min}" max="${q.max}" step="${q.step || 1}" value="${v}"`}></label>`; });
+    return h; }
+  stimStrip(host) {
+    const its = this.board.items.filter(i => i.type === 'SENS' && SC().CAT[i.kind] && (SC().CAT[i.kind].stim || []).length), sig = its.map(i => i.id + i.kind).join() + '|' + this.sel;
+    if (host._sig !== sig) { host._sig = sig; const cnt = {}, tot = {}; its.forEach(i => tot[i.kind] = (tot[i.kind] || 0) + 1);
+      host.innerHTML = its.map(i => { cnt[i.kind] = (cnt[i.kind] || 0) + 1; return `<div class="hs${this.sel === i.id ? ' on' : ''}" data-hid="${i.id}"><b class="hn" title="Seleccionar en la placa">${esc(SC().CAT[i.kind].name)}${tot[i.kind] > 1 ? ' ' + cnt[i.kind] : ''}</b>${this.stimHTML(i)}</div>`; }).join('');
+      host.querySelectorAll('.hs').forEach(box => { const it = this.board.items.find(x => x.id === box.dataset.hid); if (!it) return;
+        box.querySelector('.hn').onclick = () => { this.sel = it.id; this.dirty = true; this.showProps(); };
+        box.querySelectorAll('[data-sk]').forEach(i => { const k = i.dataset.sk, ap = (v) => { it.stim[k] = v; const ix = this.refs[it.id], sp = typeof ix === 'number' ? this.sim.parts[ix] : null; if (sp) sp.stim[k] = v; this.dirty = true; const o = box.querySelector('[data-sv="' + k + '"]'); if (o) o.textContent = this.fmtStim(it, k); };
+          if (i.type === 'range') i.oninput = () => { const c = SC().CAT[it.kind].stim.find(q => q.k === k); ap(c.log ? Math.round(Math.pow(10, +i.value) * 100) / 100 : +i.value); }; else if (i.type === 'checkbox') i.onchange = () => ap(i.checked ? 1 : 0); else i.onclick = () => ap(1); }); }); }
+    host.hidden = !its.length;
+  }
   fmtStim(it, k) { const c = SC().CAT[it.kind].stim.find(q => q.k === k), v = it.stim[k]; return (Math.abs(v) >= 1000 ? Math.round(v) : (+v).toFixed(c.step && c.step < 1 ? (c.step < 0.1 ? 2 : 1) : 0)).toString().replace('.', ',') + (c.unit ? ' ' + c.unit : ''); }
   sensProps(it) { const c = SC().CAT[it.kind]; let h = `<p class="mut">${esc(c.desc)}</p><div class="dmm" id="sread">—</div>`;
-    (c.stim || []).forEach(q => { const v = it.stim[q.k];
-      if (q.type === 'bool') h += `<label class="chk"><input type="checkbox" data-sk="${q.k}" ${v ? 'checked' : ''}> ${esc(q.label)}</label>`;
-      else if (q.type === 'btn') h += `<button class="b sm" data-sk="${q.k}">${esc(q.label)}</button>`;
-      else h += `<label>${esc(q.label)}: <b data-sv="${q.k}">${this.fmtStim(it, q.k)}</b><input type="range" data-sk="${q.k}" ${q.log ? `min="${Math.log10(q.min)}" max="${Math.log10(q.max)}" step="0.01" value="${Math.log10(Math.max(v, q.min))}"` : `min="${q.min}" max="${q.max}" step="${q.step || 1}" value="${v}"`}></label>`; });
+    if ((c.stim || []).length) h += `<p class="mut sm">Los controles del sensor (${esc(c.stim.map(q => q.label).join(', '))}) están en la barra superior.</p>`;
     (c.props || []).forEach(q => { h += `<label>${esc(q.label)}<select data-so="${q.k}">${q.opts.map(o => `<option value="${esc(o)}" ${it.o[q.k] === o ? 'selected' : ''}>${esc(q.fmt ? q.fmt(o) : o)}</option>`).join('')}</select></label>`; });
     return h; }
   updateProps() {

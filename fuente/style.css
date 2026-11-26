@@ -129,3 +129,8 @@ header .brand{cursor:pointer}
 .ed-right #bmcu.mcp-max{position:fixed;left:16px;right:16px;top:84px;bottom:40px;z-index:60;background:#F9F8F6;border:1px solid #E2DFD8;border-radius:8px;display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:auto minmax(0,1fr) auto;gap:8px 14px;padding:12px 14px;overflow:hidden}
 .ed-right #bmcu.mcp-max>.row:first-child{grid-column:1;grid-row:1}.ed-right #bmcu.mcp-max #mced{grid-column:1;grid-row:2;height:auto!important;min-height:0}.ed-right #bmcu.mcp-max .ce-rz{display:none}
 .ed-right #bmcu.mcp-max>.mcbtn{grid-column:1;grid-row:3}.ed-right #bmcu.mcp-max #mcside{display:flex;flex-direction:column;gap:8px;grid-column:2;grid-row:1/4;overflow:auto;min-height:0}.ed-right #bmcu.mcp-max .serial{height:42vh}.ed-right #bmcu.mcp-max>p{grid-column:2;grid-row:3;align-self:end}
+
+.hsens{flex:1;min-width:0;display:flex;gap:8px;align-items:center;overflow-x:auto;overflow-y:hidden;height:38px;scrollbar-width:thin}.hsens[hidden]{display:none}
+.hs{flex:none;display:flex;align-items:center;gap:8px;padding:0 8px;height:30px;border:1px solid var(--bd);border-radius:6px;background:#F9F8F6;font-size:11px}.hs.on{border-color:var(--ac)}
+.hs .hn{color:var(--ac);cursor:pointer;white-space:nowrap;font-size:11px}.hs .hs-c{flex-direction:row;align-items:center;gap:4px;font-size:11px;white-space:nowrap}.hs .hs-c b{min-width:34px;color:var(--tx);font-weight:600}.hs input[type=range]{width:78px;margin:0}.hs button{font-size:11px;padding:2px 6px}
+#hcode.on{border-color:var(--ac);color:var(--ac)}.pcur{max-width:22%}
