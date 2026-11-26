@@ -47,8 +47,12 @@ B.dsLinkHTML = dsLinkHTML;
 B.flame = (x, y, msg, sc = 1) => `<g transform="translate(${x},${y}) scale(${sc})"><title>${esc('Sobrecarga: ' + msg)}</title><g><animateTransform attributeName="transform" type="scale" values="1 1;0.94 1.1;1.05 .94;1 1" dur=".7s" repeatCount="indefinite" additive="sum"/><path d="M0,-30 C3,-20 13,-16 13,-4 C13,4 7,9 0,9 C-7,9 -13,4 -13,-4 C-13,-11 -8,-15 -6,-21 C-4,-17 -2,-16 0,-15 C1,-21 -1,-25 0,-30Z" fill="#E8671F" stroke="#9c3a0e" stroke-width=".8"/><path d="M0,-12 C3,-7 8,-5 8,1 C8,5 4,8 0,8 C-4,8 -8,5 -8,1 C-8,-3 -3,-5 0,-12Z" fill="#F7C531"/></g></g>`;
 B.newBoard = () => ({ items: [], nid: 1, mb: { on: true, top: 5, bot: 5 }, mcu: null, bb2: false });
 
+/* anchura en columnas de una pieza de columna (para girarla 180° sobre el canal central) */
+B.rotW = (it) => it.type === 'IC' ? DSim.IC[it.ic].n / 2 : it.type === 'PUSH' || it.type === 'CLK' ? 3 : it.type === 'DIPSW' ? (it.n || 8) : it.type === 'D7' ? 5 : it.type === 'SENS' ? Math.max(...SC().CAT[it.kind].pins.map(q => q.dx)) + 1 : 1;
+/* función agujero (columna, fila) de una pieza; girada 180° se refleja respecto al centro de su huella y al canal */
+B.holeFn = (it) => { if (it.rot !== 2) return (c, r) => hole0(c, r, it.bb); const R = B.rowsOf(it), W = B.rotW(it); return (c, r) => hole0(it.col + W - 1 - (c - it.col), r === R.lo ? R.hi : r === R.hi ? R.lo : r, it.bb); };
 B.pinKeys = (it) => { // llaves de hoyos por patilla (índice = nº de patilla - 1)
-  const hole = (c, r) => hole0(c, r, it.bb);
+  const hole = B.holeFn(it);
   if (it.type === 'IC') { const d = DSim.IC[it.ic], h = d.n / 2, r = [], R = B.rowsOf(it); for (let k = 1; k <= d.n; k++) r.push(k <= h ? hole(it.col + k - 1, R.lo) : hole(it.col + (d.n - k), R.hi)); return r; }
   return null;
 };
@@ -56,7 +60,7 @@ B.pinKeys = (it) => { // llaves de hoyos por patilla (índice = nº de patilla -
 /* agujeros donde hay una patilla clavada (para colorearlos en la placa) */
 B.heldKeys = (board) => { const S = new Set(), add = (k) => { if (k && /^(h|H|r|R2):/.test(k)) S.add(k); };
   board.items.forEach(it => { if (it.type === 'WIRE' || ['R', 'LED', 'C'].includes(it.type)) { add(it.a); add(it.b); return; } if (it.type === 'DMM') { add(it.red); add(it.black); return; } if (it.type === 'LP') { add(it.tip); return; }
-    if (it.col === undefined || it.off || it.rot) return; const hole = (c, r) => hole0(c, r, it.bb), R = B.rowsOf(it), c = it.col;
+    if (it.col === undefined || it.off || (it.rot && it.rot !== 2)) return; const hole = B.holeFn(it), R = B.rowsOf(it), c = it.col;
     if (it.type === 'IC') B.pinKeys(it).forEach(add);
     else if (it.type === 'PUSH') [[0, R.lo], [2, R.lo], [0, R.hi], [2, R.hi]].forEach(([d, r]) => add(hole(c + d, r)));
     else if (it.type === 'DIPSW') for (let i = 0; i < (it.n || 8); i++) { add(hole(c + i, R.lo)); add(hole(c + i, R.hi)); }
@@ -81,8 +85,8 @@ B.compile = function (board, ctx) {
     nb.part({ type: 'MCU', vdd: bd.vdd, pinIds: ids.slice(), names: ids.map(i => i.slice(2)), ref: 'mcu' });
   }
   board.items.forEach(it => {
-    if ((it.off || it.rot) && it.col !== undefined) return; /* pieza sacada de la placa o girada: no conecta con nada */
-    const hole = (c, r) => hole0(c, r, it.bb);
+    if ((it.off || (it.rot && it.rot !== 2)) && it.col !== undefined) return; /* pieza sacada de la placa o girada 90°/270°: no conecta con nada */
+    const hole = B.holeFn(it);
     switch (it.type) {
       case 'WIRE': nb.join(N(it.a), N(it.b)); break;
       case 'R': refs[it.id] = push(it, { type: 'R', r: Math.max(Schem.parseVal(it.v) || 1, 1e-3), pinIds: [N(it.a), N(it.b)] }); break;
@@ -179,7 +183,7 @@ B.Editor = class {
       for (let i = 0; i < 4; i++) { v = { x: -v.y, y: v.x }; const nb = this.snapPx({ x: z.x + v.x, y: z.y + v.y }); if (!first) first = nb; if (B.parseKey(nb).t !== 'f') { first = nb; break; } }
       if (first && first !== it.a) { it.b = first; this.changed(); this.hint('Pieza girada 90° (R).'); } return; }
     if (it.col !== undefined || it.type === 'SENS') { it.rot = ((it.rot || 0) + 1) % 4; if (!it.rot) delete it.rot; this.changed();
-      this.hint(it.rot ? 'Girada 90° (R). Girada no conecta con la placa: pulsa R hasta volver a la posición original para clavarla.' : 'Pieza en su posición original (R).'); return; }
+      this.hint(it.rot === 2 ? 'Girada 180° (R): conecta con la placa con las patillas invertidas.' : it.rot ? 'Girada 90° (R): no conecta con la placa. Sigue pulsando R: a 180° vuelve a clavarse.' : 'Pieza en su posición original (R).'); return; }
     this.hint('Esta pieza no se puede girar.');
   }
   cancelTool() { this.wf = null; this.tool = null; this.pend = null; this.root.querySelectorAll('#bpal .pi').forEach(x => x.classList.remove('on')); this.dirty = true; }
@@ -565,7 +569,7 @@ B.Editor = class {
     s += this.drawMB();
     // componentes
     const pos = (key) => keyXY(key, ctx);
-    const xf = (it) => { const t = []; if (it.off) t.push(`translate(${it.off.x},${it.off.y})`); if (it.rot) { let c = { x: 0, y: 0 }; try { const bx = this.itemBox(Object.assign({}, it, { off: undefined, rot: undefined }), this.ctx || this.geom()); if (bx) c = { x: (bx.x0 + bx.x1) / 2, y: (bx.y0 + bx.y1) / 2 }; } catch (er) { } t.push(`rotate(${it.rot * 90} ${c.x} ${c.y})`); } return t.length ? `<g transform="${t.join(' ')}">${this.drawItem(it, pos)}</g>` : this.drawItem(it, pos); };
+    const xf = (it) => { const t = []; if (it.off) t.push(`translate(${it.off.x},${it.off.y})`); if (it.rot === 2 && !it.off && it.col !== undefined) { const R = B.rowsOf(it), o2 = it.bb === 2 ? B.OFF2 : 0; t.push(`rotate(180 ${(B.hx(it.col) + B.hx(it.col + B.rotW(it) - 1)) / 2} ${(ROWY[R.lo] + ROWY[R.hi]) / 2 + o2})`); } else if (it.rot) { let c = { x: 0, y: 0 }; try { const bx = this.itemBox(Object.assign({}, it, { off: undefined, rot: undefined }), this.ctx || this.geom()); if (bx) c = { x: (bx.x0 + bx.x1) / 2, y: (bx.y0 + bx.y1) / 2 }; } catch (er) { } t.push(`rotate(${it.rot * 90} ${c.x} ${c.y})`); } return t.length ? `<g transform="${t.join(' ')}">${this.drawItem(it, pos)}</g>` : this.drawItem(it, pos); };
     b.items.forEach(it => { s += xf(it); });
     if (this.ghost) { try { s += `<g opacity=".55" pointer-events="none">${xf(this.ghost)}</g>`; } catch (er) { } }
     const si = b.items.find(i => i.id === this.sel);
