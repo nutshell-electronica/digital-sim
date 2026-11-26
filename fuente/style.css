@@ -117,3 +117,7 @@ header .brand{cursor:pointer}
 .hm-b{display:flex;gap:18px;margin-top:8px;flex-wrap:wrap;justify-content:center}.hm-btn{width:300px;padding:16px 20px;border:1px solid #E2DFD8;border-radius:6px;background:#fff9;color:#1F2421;cursor:pointer;text-align:left;font:inherit}.hm-btn b{display:block;font-size:20px;margin-bottom:4px}.hm-btn span{font-size:13px;color:#696C69}.hm-btn:hover{border-color:#B85D34}
 .hm-btn.prim{background:#B85D34;border-color:#B85D34;color:#fff}.hm-btn.prim span{color:#fbe9df}.hm-btn.prim:hover{background:#a4502b}
 .hm-f{margin-top:12px}.hm-link{border:0;background:none;color:#B85D34;text-decoration:underline;cursor:pointer;font:inherit;font-size:13px}
+
+.pal .pgrp{display:block;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--sg,#6A7B6C);margin:8px 2px 3px;border-bottom:1px solid var(--bd,#E2DFD8);padding-bottom:2px}
+.props #sread{font:600 12px Arial,sans-serif;text-align:left;padding:6px 8px;background:#E9EDE8;border:1px solid var(--bd,#E2DFD8);color:var(--tx)}
+.props input[type=range]{width:100%;display:block;margin-top:4px}

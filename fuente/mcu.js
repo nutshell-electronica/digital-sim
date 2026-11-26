@@ -21,6 +21,10 @@ M.transpile = function (src) {
     return `${pre}\nfunction* ${name}(${ps}){`; });
   const lcds = [];
   code = code.replace(/\bLiquidCrystal(?:_I2C)?\s+(\w+)\s*\([^;]*\)\s*;/g, (m, n) => { lcds.push(n); return `const ${n} = __lcd();`; });
+  code = code.replace(/\bServo\s+(\w+)\s*;/g, (m, n) => `const ${n} = __servo();`);
+  code = code.replace(/\bDHT(?:_Unified)?\s+(\w+)\s*\(([^;]*)\)\s*;/g, (m, n, a) => `const ${n} = __dht(${a});`);
+  code = code.replace(/\bOneWire\s+(\w+)\s*\(([^;]*)\)\s*;/g, (m, n, a) => `const ${n} = __ow(${a});`);
+  code = code.replace(/\bDallasTemperature\s+(\w+)\s*\(\s*&?\s*(\w+)\s*\)\s*;/g, (m, n, o) => `const ${n} = __dallas(${o});`);
   code = code.replace(/\bSSD1306\w*\s+(\w+)\s*\([^;]*\)\s*;/g, (m, n) => { warn.push('Pantalla OLED no simulada: usa LiquidCrystal.'); return `const ${n} = __lcd();`; });
   // arrays
   code = code.replace(new RegExp(`${QUAL}(${TYPES})\\s+(\\w+)\\s*\\[\\s*(\\w*)\\s*\\]\\s*=\\s*\\{([^}]*)\\}\\s*;`, 'g'), (m, t, n, sz, init) => `let ${n} = [${init}];`);
@@ -43,7 +47,7 @@ M.transpile = function (src) {
   code = code.replace(/\bsprintf\s*\(\s*(\w+)\s*,/g, '$1 = __sprintf(').replace(/\bsnprintf\s*\(\s*(\w+)\s*,[^,]+,/g, '$1 = __sprintf(');
   code = code.replace(/\bsizeof\s*\(\s*(\w+)\s*\)\s*\/\s*sizeof\s*\(\s*\w+\s*\[\s*0\s*\]\s*\)/g, '$1.length').replace(/\bstrlen\s*\(/g, '__strlen(').replace(/\.length\s*\(\s*\)/g, '.length');
   code = code.replace(/\((?:unsigned\s+)?(?:int|long|short|byte|uint8_t|uint16_t|uint32_t|char)\)\s*\(/g, '__i(').replace(/\((?:unsigned\s+)?(?:int|long|short|byte|uint8_t|uint16_t|uint32_t|char)\)\s*(\w+)/g, '__i($1)').replace(/\((?:float|double)\)\s*/g, '');
-  code = code.replace(/\b(?:delay|delayMicroseconds)\s*\(/g, m => 'yield* ' + m);
+  code = code.replace(/\b(?:delay|delayMicroseconds|pulseIn)\s*\(/g, m => 'yield* ' + m).replace(/\b(\w+)\.requestTemperatures\s*\(/g, 'yield* $1.requestTemperatures(');
   funcs.forEach(f => { code = code.replace(new RegExp(`(?<!function\\*\\s)(?<![\\w.])${f}\\s*\\(`, 'g'), m => 'yield* ' + m); });
   // bucles: cede en cada iteración
   const tickIt = (kw) => { let i = 0, o3 = ''; const re = new RegExp(`\\b${kw}\\s*\\(`, 'g'); let m3, l3 = 0; while ((m3 = re.exec(code))) { const p0 = m3.index + m3[0].length - 1, p1 = matchParen(code, p0); if (p1 < 0) break; let j = p1 + 1; while (/\s/.test(code[j])) j++;
@@ -66,7 +70,7 @@ function sprintf(fmt, ...a) { let i = 0; return String(fmt).replace(/%([-0 +]*)(
 class McuCtl {
   constructor(boardName, part, src, o = {}) {
     this.board = boardName; this.part = part; this.vdd = part.vdd; this.names = part.names; this.src = src; this.serial = ''; this.t0 = 0;
-    this.pm = {}; this.out = {}; this.pwm = {}; this.lcd = null; this.err = null; this.ledL = 0; this.wake = 0; this.running = true; this.inl = {}; this.warned = new Set();
+    this.pm = {}; this.out = {}; this.pwm = {}; this.tn = {}; this.sv = {}; this.gl = {}; this.lcd = null; this.err = null; this.ledL = 0; this.wake = 0; this.running = true; this.inl = {}; this.warned = new Set();
     this.idxOf = {}; this.names.forEach((n, i) => { const k = Board.pinNumber(boardName, n); if (k !== null) this.idxOf[k] = i; });
     this.onSerial = o.onSerial;
     try { this.compile(); } catch (e) { this.err = 'Error al compilar: ' + e.message; this.running = false; }
@@ -75,14 +79,34 @@ class McuCtl {
     const tr = M.transpile(this.src); this.tr = tr; const me = this, UNO = this.board === 'UNO';
     const R = {
       HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2, LED_BUILTIN: UNO ? 13 : 48, A0: 14, A1: 15, A2: 16, A3: 17, A4: 18, A5: 19, DEC: 10, HEX: 16, BIN: 2, OCT: 8, PI: Math.PI,
-      pinMode: (p, m) => { me.pm[p] = m; delete me.pwm[p]; }, digitalWrite: (p, v) => { me.out[p] = v ? 1 : 0; delete me.pwm[p]; },
+      pinMode: (p, m) => { me.pm[p] = m; delete me.pwm[p]; }, digitalWrite: (p, v) => { me.out[p] = v ? 1 : 0; if (v) me.gl[p] = 1; delete me.pwm[p]; },
       digitalRead: (p) => me.inl[p] ? 1 : 0, analogRead: (p) => { const k = this.idxOf[p]; if (k === undefined || !me.sim) return 0; const v = me.sim.vp[me.part.pins[k]]; return Math.max(0, Math.min(UNO ? 1023 : 4095, Math.round(v / me.vdd * (UNO ? 1023 : 4095)))); },
       analogWrite: (p, v) => { me.pwm[p] = Math.max(0, Math.min(255, v)) / 255; me.pm[p] = 1; },
       delay: function* (ms) { yield ms / 1000; }, delayMicroseconds: function* (us) { yield us / 1e6; }, __t: function* () { yield 8e-6; },
       millis: () => Math.floor(me.t * 1000), micros: () => Math.floor(me.t * 1e6),
       random: (a, b) => b === undefined ? Math.floor(Math.random() * a) : a + Math.floor(Math.random() * (b - a)), randomSeed: () => { },
-      map: (x, a, b, c, d) => Math.trunc((x - a) * (d - c) / (b - a) + c), constrain: (x, a, b) => Math.min(b, Math.max(a, x)), min: Math.min, max: Math.max, abs: Math.abs, sq: (x) => x * x, sqrt: Math.sqrt, pow: Math.pow, sin: Math.sin, cos: Math.cos, floor: Math.floor, ceil: Math.ceil, round: Math.round, NULL: 0,
-      bitRead: (x, n) => (x >> n) & 1, bitWrite: (x, n, b) => b ? x | (1 << n) : x & ~(1 << n), lowByte: (x) => x & 255, highByte: (x) => (x >> 8) & 255, tone: () => { }, noTone: () => { }, attachInterrupt: () => { }, digitalPinToInterrupt: (x) => x,
+      map: (x, a, b, c, d) => Math.trunc((x - a) * (d - c) / (b - a) + c), constrain: (x, a, b) => Math.min(b, Math.max(a, x)), min: Math.min, max: Math.max, abs: Math.abs, sq: (x) => x * x, sqrt: Math.sqrt, pow: Math.pow, sin: Math.sin, cos: Math.cos, floor: Math.floor, ceil: Math.ceil, round: Math.round, log: Math.log, log10: Math.log10, exp: Math.exp, tan: Math.tan, atan: Math.atan, atan2: Math.atan2, asin: Math.asin, acos: Math.acos, fabs: Math.abs, NULL: 0,
+      bitRead: (x, n) => (x >> n) & 1, bitWrite: (x, n, b) => b ? x | (1 << n) : x & ~(1 << n), lowByte: (x) => x & 255, highByte: (x) => (x >> 8) & 255, tone: (p, f, d) => { me.tn[p] = { f, until: d ? me.t + d / 1000 : Infinity }; me.pm[p] = 1; delete me.pwm[p]; }, noTone: (p) => { delete me.tn[p]; me.out[p] = 0; },
+      isnan: (x) => Number.isNaN(x), NAN: NaN, DHT11: 11, DHT22: 22, DHT21: 21, INFINITY: Infinity,
+      pulseIn: function* (p, lvl, to) { const lim = (to === undefined ? 1e6 : to) / 1e6, t0 = me.t, L = lvl ? 1 : 0, st = () => me.sim ? me.sim.dt : 5e-5;
+        while ((me.inl[p] ? 1 : 0) === L) { if (me.t - t0 > lim) return 0; yield st(); }
+        while ((me.inl[p] ? 1 : 0) !== L) { if (me.t - t0 > lim) return 0; yield st(); }
+        const ts = me.t; while ((me.inl[p] ? 1 : 0) === L) { if (me.t - t0 > lim) return 0; yield st(); }
+        const f = me.findSens(p); if (f && f.p.kind === 'HCSR04' && f.i === 2 && f.p.st.echoFall > f.p.st.echoRise) return Math.round((f.p.st.echoFall - f.p.st.echoRise) * 1e6);
+        return Math.round((me.t - ts) * 1e6); },
+      __servo: () => { let pin = null, us = 1500, lo = 544, hi = 2400; const a = () => { if (pin !== null) me.sv[pin].us = us; }; return {
+        attach: (p, a1, a2) => { pin = p; if (a1 !== undefined) { lo = a1; hi = a2 === undefined ? 2400 : a2; } me.sv[p] = { us, acc: 0, k: 0 }; me.pm[p] = 1; delete me.pwm[p]; return 1; }, detach: () => { if (pin !== null) { delete me.sv[pin]; me.pm[pin] = 0; pin = null; } },
+        write: (g) => { g = Math.max(0, Math.min(180, g)); if (g > 180) g = 180; us = lo + (hi - lo) * g / 180; a(); }, writeMicroseconds: (u) => { us = u; a(); },
+        read: () => Math.round(Math.max(0, Math.min(180, (us - lo) / (hi - lo) * 180))), attached: () => pin !== null }; },
+      __dht: (pin, type) => { const c = { t: NaN, h: NaN, at: -1e9 }; const rd = () => { const f = me.findSens(pin); if (!f || !f.p.st.ok || f.i !== 1 || (type === 11 && f.p.kind !== 'DHT11') || (type !== 11 && f.p.kind !== 'DHT22')) return false;
+          if (me.t - c.at < 2) return !Number.isNaN(c.t); const on = f.p.st.on0; if (on == null || me.sim.t - on < (type === 11 ? 1 : 2)) return false;
+          const q = f.p.stim; if (type === 11) { c.t = Math.round(Math.max(0, Math.min(50, q.temp))); c.h = Math.round(Math.max(20, Math.min(90, q.hum))); } else { c.t = Math.round(Math.max(-40, Math.min(80, q.temp)) * 10) / 10; c.h = Math.round(Math.max(0, Math.min(100, q.hum)) * 10) / 10; } c.at = me.t; return true; };
+        return { begin: () => { }, readTemperature: (fh) => rd() ? (fh ? c.t * 1.8 + 32 : c.t) : NaN, readHumidity: () => rd() ? c.h : NaN, computeHeatIndex: (t, h) => t + 0.05 * h, convertCtoF: (x) => x * 1.8 + 32, convertFtoC: (x) => (x - 32) / 1.8 }; },
+      __ow: (pin) => ({ pin }),
+      __dallas: (ow) => { let res = 12, val = 85, conv = false; const sens = () => { const f = me.findSens(ow.pin); if (!f || !f.p.st.ok || f.p.kind !== 'DS18B20' || f.i !== 1) return null; const n = me.part.pins[me.idxOf[ow.pin]]; if (me.sim.vp[n] < 0.7 * f.p.st.vdd) return null; return f.p; };
+        return { begin: () => { }, setResolution: (r) => { res = Math.max(9, Math.min(12, r)); }, getDeviceCount: () => sens() ? 1 : 0, isConnected: () => !!sens(),
+          requestTemperatures: function* () { const p = sens(); yield p ? 0.75 / Math.pow(2, 12 - res) : 0.001; const q = sens(); if (q) { const stp = 0.0625 * Math.pow(2, 12 - res); val = Math.round(Math.max(-55, Math.min(125, q.stim.temp)) / stp) * stp; conv = true; } else { conv = false; } },
+          getTempCByIndex: () => sens() ? val : -127, getTempFByIndex: () => sens() ? val * 1.8 + 32 : -196.6, getTempC: () => sens() ? val : -127 }; }, attachInterrupt: () => { }, digitalPinToInterrupt: (x) => x,
       __i: (x) => typeof x === 'number' ? Math.trunc(x) : x, __strlen: (s) => String(s).length, __sprintf: sprintf,
       Serial: { begin: () => { }, print: (x, b) => me.sprint(x, b), println: (x, b) => { me.sprint(x === undefined ? '' : x, b); me.sprint('\n'); }, write: (x) => me.sprint(typeof x === 'number' ? String.fromCharCode(x) : x), available: () => 0, read: () => -1, flush: () => { } },
       __lcd: () => me.mkLcd()
@@ -91,10 +115,11 @@ class McuCtl {
     const prog = new Function('R', body)(R);
     this.gen = (function* () { yield* prog.setup(); for (;;) { yield* prog.loop(); yield 1e-5; } })();
   }
+  findSens(p) { const k = this.idxOf[p]; if (k === undefined || !this.sim) return null; const n = this.part.pins[k]; if (n == null) return null; for (const q of this.sim.parts) if (q.type === 'SENS') { const i = q.pins.indexOf(n); if (i >= 0) return { p: q, i }; } return null; }
   mkLcd() { const me = this; if (!this.lcd) this.lcd = { cols: 16, rows: 2, buf: [' '.repeat(16), ' '.repeat(16)], cx: 0, cy: 0, on: true };
     const L = this.lcd, put = (s) => { for (const ch of String(s)) { if (L.cy >= L.rows) break; const r = L.buf[L.cy]; if (L.cx < L.cols) L.buf[L.cy] = r.slice(0, L.cx) + ch + r.slice(L.cx + 1); L.cx++; } };
     return { begin: (c, r) => { L.cols = c || 16; L.rows = r || 2; L.buf = Array.from({ length: L.rows }, () => ' '.repeat(L.cols)); }, setCursor: (c, r) => { L.cx = Math.trunc(c); L.cy = Math.trunc(r); }, print: (x, b) => put(b ? Number(x).toString(b).toUpperCase() : fmtNum2(x)), println: (x) => { put(fmtNum2(x)); L.cy++; L.cx = 0; }, write: (x) => put(typeof x === 'number' ? String.fromCharCode(x) : x), clear: () => { L.buf = L.buf.map(() => ' '.repeat(L.cols)); L.cx = 0; L.cy = 0; }, home: () => { L.cx = 0; L.cy = 0; }, backlight: () => { L.on = true; }, noBacklight: () => { L.on = false; }, init: () => { }, createChar: () => { }, display: () => { }, noDisplay: () => { }, cursor: () => { }, noCursor: () => { }, blink: () => { }, noBlink: () => { } }; }
-  sprint(x, b) { const s = typeof x === 'number' ? (b && b !== 10 ? Math.trunc(x).toString(b).toUpperCase() : fmtNum(x)) : String(x); this.serial += s; if (this.serial.length > 20000) this.serial = this.serial.slice(-15000); this.onSerial && this.onSerial(); }
+  sprint(x, b) { const s = typeof x === 'number' ? (Number.isNaN(x) ? 'nan' : !isFinite(x) ? 'inf' : Number.isInteger(x) && (b === 2 || b === 8 || b === 16) ? Math.trunc(x).toString(b).toUpperCase() : b !== undefined && b !== 10 ? x.toFixed(Math.min(b, 8)) : fmtNum(x)) : String(x); this.serial += s; if (this.serial.length > 20000) this.serial = this.serial.slice(-15000); this.onSerial && this.onSerial(); }
   /* llamado por el motor en cada paso */
   sample(levels, t, sim) {
     this.t = t - this.t0; this.sim = sim;
@@ -105,7 +130,12 @@ class McuCtl {
     }
     const dr = new Array(this.names.length);
     for (const k in this.idxOf) { const i = this.idxOf[k], m = this.pm[k];
-      if (m === 1) { let v = this.out[k] || 0; if (this.pwm[k] !== undefined) v = ((this.t * 490) % 1) < this.pwm[k] ? 1 : 0; dr[i] = v ? 1 : 2; } else if (m === 2) dr[i] = 3; }
+      if (m === 1) { let v = this.out[k] || 0; if (this.pwm[k] !== undefined) v = ((this.t * 490) % 1) < this.pwm[k] ? 1 : 0;
+        const tn = this.tn[k]; if (tn) { if (this.t >= tn.until) delete this.tn[k]; else v = ((this.t * tn.f) % 1) < 0.5 ? 1 : 0; }
+        const sv = this.sv[k]; if (sv) { const dt = sim.dt, per = Math.max(2, Math.round(0.02 / dt)); if (sv.k === 0) { sv.acc += sv.us * 1e-6 / dt; sv.n = Math.floor(sv.acc); sv.acc -= sv.n; } v = sv.k < sv.n ? 1 : 0; sv.k = (sv.k + 1) % per; }
+        else if (!v && this.gl[k]) { const f = this.findSens(k); if (f && f.p.kind === 'HCSR04' && f.i === 1) v = 1; }
+        dr[i] = v ? 1 : 2; } else if (m === 2) dr[i] = 3; }
+    this.gl = {};
     this.ledL = (this.out[this.board === 'UNO' ? 13 : 48] || 0) && this.pm[this.board === 'UNO' ? 13 : 48] === 1;
     return dr;
   }
@@ -189,8 +219,8 @@ void loop() {
 
 /* ---------- ejemplos precargados (UNO y ESP32) ---------- */
 const EXP = {
-  UNO: { L: 8, L2: 9, L3: 10, B: 2, B2: 3, B3: 4, PWM: 9, AN: 'A0', LCD: '12, 11, 5, 4, A0, A1' },
-  ESP32: { L: 4, L2: 5, L3: 6, B: 15, B2: 16, B3: 17, PWM: 4, AN: 1, LCD: '7, 8, 9, 10, 11, 12' }
+  UNO: { L: 8, L2: 9, L3: 10, B: 2, B2: 3, B3: 4, PWM: 9, AN: 'A0', AN2: 'A1', LCD: '12, 11, 5, 4, A0, A1' },
+  ESP32: { L: 4, L2: 5, L3: 6, B: 15, B2: 16, B3: 17, PWM: 4, AN: 1, AN2: 2, LCD: '7, 8, 9, 10, 11, 12' }
 };
 M.EXAMPLE_LIST = [
   { id: 'blink', title: '1 · Parpadeo (Blink)', code: (p) => `// Parpadeo del LED de la placa y de un LED externo en el pin ${p.L}
@@ -346,7 +376,264 @@ void loop() {
   }
 }` },
   { id: 'reloj', title: '9 · P9.1 Reloj digital (millis)', code: () => M.EXAMPLES.reloj },
-  { id: 'marcador', title: '10 · P9.2 Marcador de fútbol', code: (p) => M.EXAMPLES.marcador.replace('BTN_LOCAL = 2, BTN_VISIT = 3, BTN_RESET = 4', `BTN_LOCAL = ${p.B}, BTN_VISIT = ${p.B2}, BTN_RESET = ${p.B3}`).replace('LiquidCrystal lcd(12, 11, 5, 4, A0, A1)', `LiquidCrystal lcd(${p.LCD})`) }
+  { id: 'marcador', title: '10 · P9.2 Marcador de fútbol', code: (p) => M.EXAMPLES.marcador.replace('BTN_LOCAL = 2, BTN_VISIT = 3, BTN_RESET = 4', `BTN_LOCAL = ${p.B}, BTN_VISIT = ${p.B2}, BTN_RESET = ${p.B3}`).replace('LiquidCrystal lcd(12, 11, 5, 4, A0, A1)', `LiquidCrystal lcd(${p.LCD})`) },
+  { id: 'tmp36', title: '11 · Termómetro TMP36 (analogRead)', code: (p) => `// TMP36: Vout = 0,5 V + 10 mV/°C. Conecta +Vs a ${p.AN === 'A0' ? '5 V' : '3,3 V'}, GND a GND y Vout a ${p.AN}.
+const int SENSOR = ${p.AN};
+const float VREF = ${p.AN === 'A0' ? '5.0' : '3.3'};
+const int MAXADC = ${p.AN === 'A0' ? '1023' : '4095'};
+
+void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  float v = analogRead(SENSOR) * VREF / MAXADC;
+  float temperatura = (v - 0.5) * 100.0;
+  Serial.print("Vout = ");
+  Serial.print(v, 3);
+  Serial.print(" V   T = ");
+  Serial.print(temperatura, 1);
+  Serial.println(" C");
+  delay(1000);
+}` },
+  { id: 'ldr', title: '12 · Luz con LDR y divisor (alumbrado automático)', code: (p) => `// Divisor: ${p.AN === 'A0' ? '5 V' : '3,3 V'} → LDR → ${p.AN} → resistencia de 10 kΩ → GND
+// Con poca luz la LDR sube de resistencia y la tensión en ${p.AN} baja.
+// LED con su resistencia en el pin ${p.L}.
+const int LDR = ${p.AN};
+const int LED = ${p.L};
+const int UMBRAL = ${p.AN === 'A0' ? 300 : 1200};
+
+void setup() {
+  pinMode(LED, OUTPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  int luz = analogRead(LDR);
+  Serial.println(luz);
+  if (luz < UMBRAL) digitalWrite(LED, HIGH);
+  else digitalWrite(LED, LOW);
+  delay(200);
+}` },
+  { id: 'ntc', title: '13 · Termistor NTC 10 kΩ (ecuación Beta)', code: (p) => `// Divisor: ${p.AN === 'A0' ? '5 V' : '3,3 V'} → 10 kΩ → ${p.AN} → NTC → GND
+const int ENTRADA = ${p.AN};
+const int MAXADC = ${p.AN === 'A0' ? '1023' : '4095'};
+const float R0 = 10000.0;     // resistencia a 25 °C
+const float BETA = 3950.0;
+const float RFIJA = 10000.0;
+
+void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  int lectura = analogRead(ENTRADA);
+  float rntc = RFIJA * lectura / (MAXADC - lectura);
+  float tk = 1.0 / (1.0 / 298.15 + log(rntc / R0) / BETA);
+  Serial.print("R = ");
+  Serial.print(rntc, 0);
+  Serial.print(" ohm   T = ");
+  Serial.print(tk - 273.15, 1);
+  Serial.println(" C");
+  delay(1000);
+}` },
+  { id: 'hcsr04', title: '14 · Distancia con HC-SR04 (pulseIn)', code: (p) => `// HC-SR04: VCC a 5 V, GND, TRIG en el pin ${p.B} y ECHO en el pin ${p.B2}.
+${p.AN === 'A0' ? '' : '// OJO: ECHO sale a 5 V; en el ESP32 (3,3 V) necesita un divisor de tensión.\n'}const int TRIG = ${p.B};
+const int ECHO = ${p.B2};
+
+void setup() {
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG, LOW);
+  long duracion = pulseIn(ECHO, HIGH, 30000);   // µs; 0 si no hay eco
+  float cm = duracion / 58.0;
+  Serial.print("Distancia: ");
+  Serial.print(cm, 1);
+  Serial.println(" cm");
+  delay(300);
+}` },
+  { id: 'dht', title: '15 · DHT11/DHT22 temperatura y humedad', code: (p) => `// Módulo DHT de 3 patas: VCC, DATA en el pin ${p.B} y GND.
+#include <DHT.h>
+#define DHTPIN ${p.B}
+#define DHTTYPE DHT11        // cámbialo a DHT22 si usas ese sensor
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(9600);
+  dht.begin();
+}
+
+void loop() {
+  delay(2000);                       // el DHT no admite más de una lectura cada 1-2 s
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  if (isnan(h) || isnan(t)) {
+    Serial.println("Error al leer el DHT");
+    return;
+  }
+  Serial.print("Humedad: ");
+  Serial.print(h, 0);
+  Serial.print(" %   Temperatura: ");
+  Serial.print(t, 1);
+  Serial.println(" C");
+}` },
+  { id: 'ds18b20', title: '16 · DS18B20 (1-Wire)', code: (p) => `// DS18B20: GND, DQ en el pin ${p.B} con resistencia de 4,7 kΩ a VDD, y VDD.
+#include <OneWire.h>
+#include <DallasTemperature.h>
+OneWire oneWire(${p.B});
+DallasTemperature sensores(&oneWire);
+
+void setup() {
+  Serial.begin(9600);
+  sensores.begin();
+}
+
+void loop() {
+  sensores.requestTemperatures();            // la conversión de 12 bits tarda 750 ms
+  float t = sensores.getTempCByIndex(0);
+  if (t == -127.0) Serial.println("Sensor no encontrado (¿falta la resistencia de 4,7 kΩ?)");
+  else {
+    Serial.print("T = ");
+    Serial.print(t, 2);
+    Serial.println(" C");
+  }
+  delay(1000);
+}` },
+  { id: 'pir', title: '17 · Alarma con sensor PIR y zumbador', code: (p) => `// PIR: VCC a 5 V, OUT en el pin ${p.B}, GND. Zumbador activo en el pin ${p.B2} (con su resistencia si es necesario).
+const int PIR = ${p.B};
+const int ZUMBADOR = ${p.B2};
+bool anterior = false;
+
+void setup() {
+  pinMode(PIR, INPUT);
+  pinMode(ZUMBADOR, OUTPUT);
+  Serial.begin(9600);
+  Serial.println("Calentando el PIR...");
+}
+
+void loop() {
+  bool mov = digitalRead(PIR);
+  if (mov && !anterior) Serial.println("¡Movimiento detectado!");
+  if (!mov && anterior) Serial.println("Sin movimiento");
+  anterior = mov;
+  digitalWrite(ZUMBADOR, mov);
+}` },
+  { id: 'servo', title: '18 · Servo controlado con potenciómetro', code: (p) => `// Potenciómetro: extremos a ${p.AN === 'A0' ? '5 V' : '3,3 V'} y GND, cursor en ${p.AN}. Servo: señal en el pin ${p.PWM}, rojo a 5 V, marrón a GND.
+#include <Servo.h>
+Servo servo;
+const int POT = ${p.AN};
+
+void setup() {
+  servo.attach(${p.PWM});
+  Serial.begin(9600);
+}
+
+void loop() {
+  int lectura = analogRead(POT);
+  int angulo = map(lectura, 0, ${p.AN === 'A0' ? 1023 : 4095}, 0, 180);
+  servo.write(angulo);
+  Serial.print("Angulo: ");
+  Serial.println(angulo);
+  delay(50);
+}` },
+  { id: 'servo_barrido', title: '19 · Servo: barrido de 0° a 180°', code: (p) => `#include <Servo.h>
+Servo servo;
+
+void setup() {
+  servo.attach(${p.PWM});
+}
+
+void loop() {
+  for (int a = 0; a <= 180; a += 2) {
+    servo.write(a);
+    delay(20);
+  }
+  for (int a = 180; a >= 0; a -= 2) {
+    servo.write(a);
+    delay(20);
+  }
+}` },
+  { id: 'melodia', title: '20 · Melodía con zumbador pasivo (tone)', code: (p) => `// Zumbador pasivo entre el pin ${p.B2} y GND (con resistencia de 100 Ω en serie).
+const int ZUMBADOR = ${p.B2};
+int notas[] = {262, 294, 330, 349, 392, 440, 494, 523};   // do, re, mi, fa, sol, la, si, do
+
+void setup() {
+}
+
+void loop() {
+  for (int i = 0; i < 8; i++) {
+    tone(ZUMBADOR, notas[i], 250);
+    delay(300);
+  }
+  noTone(ZUMBADOR);
+  delay(1500);
+}` },
+  { id: 'joystick', title: '21 · Joystick analógico', code: (p) => `// KY-023: GND, +5V, VRx → ${p.AN}, VRy → ${p.AN2}, SW → pin ${p.B} (INPUT_PULLUP).
+const int EJE_X = ${p.AN};
+const int EJE_Y = ${p.AN2};
+const int BOTON = ${p.B};
+
+void setup() {
+  pinMode(BOTON, INPUT_PULLUP);
+  Serial.begin(9600);
+}
+
+void loop() {
+  int x = analogRead(EJE_X);
+  int y = analogRead(EJE_Y);
+  Serial.print("X=");
+  Serial.print(x);
+  Serial.print("  Y=");
+  Serial.print(y);
+  Serial.print("  pulsador=");
+  Serial.println(digitalRead(BOTON) == LOW ? "SI" : "NO");
+  delay(200);
+}` },
+  { id: 'riego', title: '22 · Riego automático (humedad de suelo + relé)', code: (p) => `// Sensor FC-28: VCC, GND y AO en ${p.AN}. Módulo relé: VCC a 5 V, GND y IN en el pin ${p.B} (se activa con nivel BAJO).
+const int SUELO = ${p.AN};
+const int RELE = ${p.B};
+const int SECO = ${p.AN === 'A0' ? 600 : 2400};     // por encima = suelo seco
+const int HUMEDO = ${p.AN === 'A0' ? 400 : 1600};   // por debajo = suelo húmedo (histéresis)
+bool regando = false;
+
+void setup() {
+  pinMode(RELE, OUTPUT);
+  digitalWrite(RELE, HIGH);          // relé en reposo
+  Serial.begin(9600);
+}
+
+void loop() {
+  int humedad = analogRead(SUELO);
+  if (!regando && humedad > SECO) regando = true;
+  if (regando && humedad < HUMEDO) regando = false;
+  digitalWrite(RELE, regando ? LOW : HIGH);
+  Serial.print("Sensor: ");
+  Serial.print(humedad);
+  Serial.println(regando ? "  -> REGANDO" : "  -> parado");
+  delay(500);
+}` },
+  { id: 'rgb', title: '23 · LED RGB con analogWrite', code: (p) => `// LED RGB de cátodo común: R, G y B a los pines ${p.L}, ${p.L2} y ${p.L3} (cada uno con 220 Ω); el cátodo a GND.
+const int ROJO = ${p.L}, VERDE = ${p.L2}, AZUL = ${p.L3};
+
+void setup() {
+}
+
+void loop() {
+  for (int i = 0; i < 256; i += 5) {
+    analogWrite(ROJO, i);
+    analogWrite(VERDE, 255 - i);
+    analogWrite(AZUL, 128);
+    delay(30);
+  }
+}` },
 ];
 M.exampleCode = (id, board) => { const e = M.EXAMPLE_LIST.find(x => x.id === id); return e ? e.code(EXP[board] || EXP.UNO) : ''; };
 

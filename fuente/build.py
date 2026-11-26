@@ -1,6 +1,6 @@
 import sys,os,base64,glob
 d='/home/claude/sim/src/'
-order=['engine.js','kmap.js','timing.js','ui.js','thumbs.js','schem.js','mcuart.js','board.js','mcu.js','codeed.js','ui_kmap.js','practicas.js','fpga.js','home.js','report.js','app.js']
+order=['engine.js','kmap.js','timing.js','ui.js','thumbs.js','sensors.js','schem.js','mcuart.js','board.js','mcu.js','codeed.js','ui_kmap.js','practicas.js','fpga.js','home.js','report.js','app.js']
 js='\n'.join(open(d+f).read() for f in order)
 css=open(d+'style.css').read()
 av=''

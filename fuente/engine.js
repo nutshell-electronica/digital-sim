@@ -260,6 +260,7 @@ class Sim {
     else if (p.type === 'DISP7') { p.led = LEDV[p.color || 'red']; p.st = { on: [0, 0, 0, 0, 0, 0, 0, 0], i: [0, 0, 0, 0, 0, 0, 0, 0] }; }
     else if (p.type === 'C') p.st = { vc: p.v0 || 0 };
     else if (p.type === 'MCU') { p.fam = FAM.MCU; }
+    else if (p.type === 'SENS') { p.stim = Object.assign({}, p.stim); p.o = Object.assign({}, p.o); p.links = []; }
     return p;
   }
   addWatch(node, label) { const w = { node, label, t: [], v: [] }; this.watches.push(w); return w; }
@@ -275,6 +276,7 @@ class Sim {
     const n = p.pins.length; if (!p.pg) { p.pg = new Float64Array(n); p.pi = new Float64Array(n); p.pk = new Int32Array(n); }
     const pg = p.pg, pi = p.pi, pk = p.pk; pg.fill(GMIN); pi.fill(0); pk.fill(0);
     const vp = this.vp;
+    if (p.type === 'SENS') { p.links = []; const m = E.SENS && E.SENS[p.kind]; if (m) m(this, p); return; }
     if (p.type === 'IC') {
       const d = p.def, fam = p.fam, pins = p.pins;
       let vcc = 5, vg = 0, powered = true;
@@ -368,8 +370,9 @@ class Sim {
         case 'DISP7': { const [vf, rs] = p.led; const com = pn[7];
           for (let k = 0; k < 8; k++) { const a = p.ca ? com : pn[k], c = p.ca ? pn[k] : com; const on = p.st.on[k]; const g = on ? 1 / rs : GMIN; G2(a, c, g); if (on) { I1(a, vf * g); I1(c, -vf * g); } }
           break; }
-        case 'IC': case 'GATE': case 'FF': case 'SRC': case 'MCU': {
+        case 'IC': case 'GATE': case 'FF': case 'SRC': case 'MCU': case 'SENS': {
           for (let i = 0; i < pn.length; i++) { if (pn[i] == null) continue; const g = p.pg[i]; if (g > GMIN * 2 || p.pk[i]) { G2(pn[i], 0, g); I1(pn[i], p.pi[i]); } }
+          if (p.links) for (const [a, c, g, is] of p.links) { G2(pn[a], pn[c], g); if (is) { I1(pn[a], is); I1(pn[c], -is); } }
           break; }
       }
     }
@@ -394,7 +397,7 @@ class Sim {
   step() {
     this.t += this.dt; this.stepN++;
     this.vp.set(this.v);
-    for (const p of this.parts) if (p.type === 'IC' || p.type === 'GATE' || p.type === 'FF' || p.type === 'SRC' || p.type === 'MCU') this.digital(p);
+    for (const p of this.parts) if (p.type === 'IC' || p.type === 'GATE' || p.type === 'FF' || p.type === 'SRC' || p.type === 'MCU' || p.type === 'SENS') this.digital(p);
     for (let it = 0; it < 5; it++) { this.stamp(); this.solve(); if (!this.ledUpdate()) break; }
     for (const p of this.parts) if (p.type === 'C') p.st.vc = this.v[p.pins[0]] - this.v[p.pins[1]];
     if (this.watches.length && this.stepN % this.recEvery === 0) for (const w of this.watches) {
@@ -458,7 +461,7 @@ function analyze(nl) {
       case 'SRC': add(p.pins[0], true); break;
       case 'GATE': add(p.pins[p.pins.length - 1], true); break;
       case 'FF': add(p.pins[5], 1); add(p.pins[6], 1); break;
-      case 'MCU': p.pins.forEach(n => add(n, true)); break;
+      case 'MCU': case 'SENS': p.pins.forEach(n => add(n, true)); break;
       case 'IC': {
         const d = IC[p.ic]; d.outs && d.outs.forEach(o => add(p.pins[o - 1], true));
         if (d.analog === '555') { [4, 7, 3].forEach(i => add(p.pins[i - 1], true)); }
