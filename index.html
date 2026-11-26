@@ -2802,7 +2802,7 @@ class McuCtl {
   compile() {
     const tr = M.transpile(this.src); this.tr = tr; const me = this, UNO = this.board === 'UNO';
     const R = {
-      HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2, LED_BUILTIN: UNO ? 13 : 48, A0: 14, A1: 15, A2: 16, A3: 17, A4: 18, A5: 19, DEC: 10, HEX: 16, BIN: 2, OCT: 8, PI: Math.PI,
+      HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2, LED_BUILTIN: UNO ? 13 : 48, A0: 14, A1: 15, A2: 16, A3: 17, A4: 18, A5: 19, DEC: 'DEC', HEX: 'HEX', BIN: 'BIN', OCT: 'OCT', PI: Math.PI,
       pinMode: (p, m) => { me.pm[p] = m; delete me.pwm[p]; }, digitalWrite: (p, v) => { me.out[p] = v ? 1 : 0; if (v) me.gl[p] = 1; delete me.pwm[p]; },
       digitalRead: (p) => me.inl[p] ? 1 : 0, analogRead: (p) => { const k = this.idxOf[p]; if (k === undefined || !me.sim) return 0; const v = me.sim.vp[me.part.pins[k]]; return Math.max(0, Math.min(UNO ? 1023 : 4095, Math.round(v / me.vdd * (UNO ? 1023 : 4095)))); },
       analogWrite: (p, v) => { me.pwm[p] = Math.max(0, Math.min(255, v)) / 255; me.pm[p] = 1; },
@@ -2871,7 +2871,7 @@ class McuCtl {
     this.gen = (function* () { yield* prog.setup(); for (;;) { yield* prog.loop(); yield 1e-5; } })();
   }
   nodeOf(p) { const k = this.idxOf[p]; return k === undefined ? null : this.part.pins[k]; }
-  fmt(x, b) { return typeof x === 'number' ? (Number.isNaN(x) ? 'nan' : !isFinite(x) ? 'inf' : Number.isInteger(x) && (b === 2 || b === 8 || b === 16) ? Math.trunc(x).toString(b).toUpperCase() : b !== undefined && b !== 10 ? x.toFixed(Math.min(b, 8)) : fmtNum(x)) : String(x); }
+  fmt(x, b) { return typeof x === 'number' ? (Number.isNaN(x) ? 'nan' : !isFinite(x) ? 'inf' : typeof b === 'string' ? (Number.isInteger(x) ? Math.trunc(x).toString({ HEX: 16, BIN: 2, OCT: 8, DEC: 10 }[b] || 10).toUpperCase() : fmtNum(x)) : typeof b === 'number' && b >= 0 ? x.toFixed(Math.min(b, 8)) : fmtNum(x)) : String(x); }
   devAt(addr) { if (!this.sim) return null; const ns = this.nodeOf(this.i2c.sda), nc = this.nodeOf(this.i2c.scl); if (ns == null || nc == null) return null; const CAT = root.SensCat && root.SensCat.CAT;
     for (const q of this.sim.parts) { if (q.type !== 'SENS') continue; const c = CAT[q.kind]; if (!c || !c.i2c) continue; if (q.pins[c.i2c.sda] === ns && q.pins[c.i2c.scl] === nc && q.st.ok && q.st.addr === addr) return q; } return null; }
   mpuInit(d) { if (!d.st.regs) { d.st.regs = {}; d.st.regs[0x75] = 0x68; d.st.regs[0x6B] = 0x40; d.st.sleep = true; } }
@@ -2925,9 +2925,9 @@ class McuCtl {
     for (const k in this.idxOf) { if (this.dead.has(k)) continue; const i = this.idxOf[k], n = this.part.pins[i], v = sim.v[n], pp = this.part;
       const cur = pp.pk[i] ? Math.abs(pp.pi[i] - pp.pg[i] * v) : 0; let why = null;
       if (v > lim || v < -0.7) why = `recibe ${v.toFixed(1).replace('.', ',')} V (máximo ${this.board === 'UNO' ? '5' : '3,3'} V)`; else if (cur > 0.04) why = `maneja ${(cur * 1e3).toFixed(0)} mA (máximo 40 mA)`;
-      if (!why) { this.bad[k] = 0; continue; }
+      if (!why) { delete this.bad[k]; continue; }
       if (v > lim && !this.warned.has(k)) { this.warned.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Riesgo de dañar la placa.`); }
-      if ((this.bad[k] = (this.bad[k] || 0) + 1) >= 8) { this.dead.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Pin dañado: ya no lee ni escribe. Pulsa «Reiniciar» para reponer la placa.`); } }
+      if (this.bad[k] === undefined) this.bad[k] = sim.t; if (sim.t - this.bad[k] >= 0.5) { this.dead.add(k); r.push(`${nm}: el pin ${this.names[i]} ${why}. Pin dañado: ya no lee ni escribe. Pulsa «Reiniciar» para reponer la placa.`); } }
     return r;
   }
 }
@@ -2954,6 +2954,53 @@ void loop() {
 const EXP = {
   UNO: { L: 8, L2: 9, L3: 10, B: 2, B2: 3, B3: 4, PWM: 9, AN: 'A0', AN2: 'A1', LCD: '12, 11, 5, 4, A0, A1' },
   ESP32: { L: 4, L2: 5, L3: 6, B: 15, B2: 16, B3: 17, PWM: 4, AN: 1, AN2: 2, LCD: '7, 8, 9, 10, 11, 12' }
+};
+/* ---------- montajes de los ejemplos: protoboard lista para simular ---------- */
+M.exampleCircuit = function (id, bd) {
+  const uno = bd === 'UNO', P = uno ? EXP.UNO : EXP.ESP32, SC = root.SensCat, items = [], wires = [];
+  const sk = (n) => typeof n === 'number' ? (uno ? 's:D' + n : 's:GPIO' + n) : 's:' + n;
+  const G = 's:GND', V5 = 's:5V', VA = uno ? 's:5V' : 's:3V3', V3 = 's:3V3';
+  const w = (a, b) => wires.push({ type: 'WIRE', a, b });
+  const hl = (c, row) => `h:${c}${row || 'a'}`;
+  const R = (a, b, v) => items.push({ type: 'R', a, b, v });
+  const led = (col, pin, color) => { w(sk(pin), hl(col)); R(hl(col, 'e'), hl(col + 4, 'e'), '330'); items.push({ type: 'LED', a: hl(col + 4, 'c'), b: hl(col + 6, 'c'), color: color || 'red' }); w(hl(col + 6, 'b'), G); };
+  const push = (col, pin) => { items.push({ type: 'PUSH', col, r: 5 }); w(sk(pin), hl(col)); w(hl(col, 'j'), G); };
+  const sens = (kind, col, extra) => { const d = SC.defaults(kind); items.push(Object.assign({ type: 'SENS', kind, col, r: 5, stim: d.stim, o: d.o }, extra || {})); return (dx) => hl(col + dx); };
+  const pot = (col, pin) => { const p = sens('POT', col); w(p(0), VA); w(p(4), G); w(p(2), sk(pin)); };
+  const AN = P.AN, AN2 = P.AN2;
+  const bus = () => ({ sda: uno ? 'A4' : 8, scl: uno ? 'A5' : 9 });
+  switch (id) {
+    case 'blink': led(5, P.L); break;
+    case 'pulsador': push(5, P.B); led(14, P.L); break;
+    case 'semaforo': led(5, P.L, 'red'); led(14, P.L2, 'yellow'); led(23, P.L3, 'green'); break;
+    case 'fade': led(5, P.PWM); break;
+    case 'voltimetro': pot(5, AN); break;
+    case 'lcd': break;
+    case 'antirrebote': push(5, P.B); break;
+    case 'tmp36': { const t = sens('TMP36', 5); w(t(0), VA); w(t(1), sk(AN)); w(t(2), G); break; }
+    case 'ldr': { const l = sens('LDR', 5); w(l(0), VA); w(l(1), sk(AN)); R(hl(6, 'd'), hl(12, 'd'), '10k'); w(hl(12), G); led(20, P.L); break; }
+    case 'ntc': { w(hl(5), VA); R(hl(5, 'd'), hl(9, 'd'), '10k'); const n = sens('NTC', 9); w(hl(9, 'b'), sk(AN)); w(n(1), G); break; }
+    case 'hcsr04': { const h = sens('HCSR04', 5); w(h(0), V5); w(h(1), sk(P.B)); w(h(3), G);
+      if (uno) w(h(2), sk(P.B2)); else { R(hl(7, 'd'), hl(11, 'd'), '1k'); w(h(2), hl(7, 'b')); R(hl(11, 'c'), hl(15, 'c'), '2k'); w(hl(11), sk(P.B2)); w(hl(15), G); } break; }
+    case 'dht': { const d = sens('DHT11', 5); w(d(0), VA); w(d(1), sk(P.B)); w(d(2), G); break; }
+    case 'ds18b20': { const d = sens('DS18B20', 5); w(d(0), G); w(d(1), sk(P.B)); w(d(2), VA); R(hl(6, 'd'), hl(7, 'd'), '4.7k'); break; }
+    case 'pir': { const p = sens('PIR', 5); w(p(0), V5); w(p(1), sk(P.B)); w(p(2), G); const z = sens('BUZZ', 14); w(z(0), sk(P.B2)); w(z(3), G); break; }
+    case 'servo': { pot(5, AN); const sv = sens('SERVO', 14); w(sv(0), G); w(sv(1), V5); w(sv(2), sk(P.PWM)); break; }
+    case 'servo_barrido': { const sv = sens('SERVO', 5); w(sv(0), G); w(sv(1), V5); w(sv(2), sk(P.PWM)); break; }
+    case 'melodia': { const z = sens('BUZZP', 6); w(sk(P.B2), hl(3)); R(hl(3, 'd'), hl(6, 'd'), '100'); w(z(3), G); break; }
+    case 'joystick': { const j = sens('JOY', 5); w(j(0), G); w(j(1), VA); w(j(2), sk(AN)); w(j(3), sk(AN2)); w(j(4), sk(P.B)); break; }
+    case 'riego': { const s2 = sens('SOIL', 5); w(s2(0), VA); w(s2(1), G); w(s2(3), sk(AN)); const r = sens('RELAY', 14); w(r(0), V5); w(r(1), G); w(r(2), sk(P.B)); w(r(5), V5); w(r(6), hl(24)); const m = sens('MOTOR', 24); w(m(1), G); break; }
+    case 'rgb': { const g = sens('RGB', 12); R(hl(6, 'd'), hl(12, 'd'), '220'); w(sk(P.L), hl(6)); R(hl(8, 'c'), hl(14, 'c'), '220'); w(sk(P.L2), hl(8)); R(hl(10, 'b'), hl(15, 'b'), '220'); w(sk(P.L3), hl(10)); w(g(1), G); break; }
+    case 'i2cscan': { const b = bus(), a = sens('BMP280', 5), m = sens('MPU6050', 14);
+      w(a(0), V3); w(a(1), G); w(a(2), sk(b.scl)); w(a(3), sk(b.sda)); w(a(5), G); w(m(0), V3); w(m(1), G); w(m(2), sk(b.scl)); w(m(3), sk(b.sda)); w(m(6), G); break; }
+    case 'bmp280': { const b = bus(), a = sens('BMP280', 5); w(a(0), V3); w(a(1), G); w(a(2), sk(b.scl)); w(a(3), sk(b.sda)); w(a(5), G); break; }
+    case 'mpu6050': { const b = bus(), m = sens('MPU6050', 5); w(m(0), V3); w(m(1), G); w(m(2), sk(b.scl)); w(m(3), sk(b.sda)); w(m(6), G); break; }
+    case 'oled': { const b = bus(), o = sens('OLED', 5); w(o(0), G); w(o(1), V3); w(o(2), sk(b.scl)); w(o(3), sk(b.sda)); break; }
+    case 'mcp3008': { sens('MCP3008', 5); const p = sens('POT', 22), hi = (dx) => hl(5 + dx, 'j'); w(p(0), VA); w(p(4), G); w(p(2), hl(5));
+      w(hi(0), VA); w(hi(1), VA); w(hi(2), G); w(hi(7), G); w(hi(3), sk(uno ? 13 : 12)); w(hi(4), sk(uno ? 12 : 13)); w(hi(5), sk(11)); w(hi(6), sk(P.B)); break; }
+    default: return null;
+  }
+  return { items: items.concat(wires) };
 };
 M.EXAMPLE_LIST = [
   { id: 'blink', title: '1 · Parpadeo (Blink)', code: (p) => `// Parpadeo del LED de la placa y de un LED externo en el pin ${p.L}
@@ -4328,7 +4375,7 @@ function buildGuide() {
   <p>Más detalles de cada pieza: pasa el ratón por encima y aparece su ayuda.</p>
 
   <h2 id="g6">6 · Programar Arduino / ESP32</h2>
-  <ul><li>En la pestaña Protoboard coloca una placa (Arduino UNO o ESP32-S3 DevKitC-1) y <b>haz clic en ella</b>: el panel derecho se convierte en el editor del programa, con el monitor serie y la pantalla LCD. «Compilar y simular» lo ejecuta contra lo que hayas cableado en la protoboard.</li><li>El editor colorea el código como el IDE de Arduino, numera las líneas, sangra solo, y sugiere funciones, constantes, métodos de <code>Serial</code> y <code>lcd</code> y plantillas (<code>for</code>, <code>if</code>, <code>switch</code>…) mientras escribes. Ctrl+Espacio fuerza la lista, Tab o Enter aceptan, Ctrl+/ comenta líneas. El selector «Ejemplos» carga programas de partida (Blink, pulsador, semáforo, PWM, voltímetro, LCD, reloj, marcador…) adaptados a la placa elegida.</li><li>Soportado: variables, funciones, <code>if / for / while</code>, <code>millis()</code>, <code>delay()</code>, <code>pinMode / digitalWrite / digitalRead</code>, <code>analogRead / analogWrite</code>, <code>Serial</code>, <code>sprintf</code> y <code>LiquidCrystal</code> (pantalla virtual, no usa pines).</li><li>La división de enteros trunca como en C. No hay desbordamiento de 16 bits en el UNO ni I²C real.</li><li>El ESP32 funciona a 3,3 V: lo que conectes a más de 3,7 V en un pin es una avería, y se avisa.</li><li><code>INPUT_PULLUP</code> activa la resistencia interna: con el pulsador sin pulsar el pin lee 1.</li></ul>
+  <ul><li><b>Ejemplos con circuito:</b> al elegir un ejemplo se carga también el montaje en la protoboard, listo para «Compilar y simular» (si ya tenías piezas, te pregunta antes de sustituirlas). En el ESP32 el relé del riego pone su entrada a 5 V al arrancar y salta el aviso de tensión.</li><li>En la pestaña Protoboard coloca una placa (Arduino UNO o ESP32-S3 DevKitC-1) y <b>haz clic en ella</b>: el panel derecho se convierte en el editor del programa, con el monitor serie y la pantalla LCD. «Compilar y simular» lo ejecuta contra lo que hayas cableado en la protoboard.</li><li>El editor colorea el código como el IDE de Arduino, numera las líneas, sangra solo, y sugiere funciones, constantes, métodos de <code>Serial</code> y <code>lcd</code> y plantillas (<code>for</code>, <code>if</code>, <code>switch</code>…) mientras escribes. Ctrl+Espacio fuerza la lista, Tab o Enter aceptan, Ctrl+/ comenta líneas. El selector «Ejemplos» carga programas de partida (Blink, pulsador, semáforo, PWM, voltímetro, LCD, reloj, marcador…) adaptados a la placa elegida.</li><li>Soportado: variables, funciones, <code>if / for / while</code>, <code>millis()</code>, <code>delay()</code>, <code>pinMode / digitalWrite / digitalRead</code>, <code>analogRead / analogWrite</code>, <code>Serial</code>, <code>sprintf</code> y <code>LiquidCrystal</code> (pantalla virtual, no usa pines).</li><li>La división de enteros trunca como en C. No hay desbordamiento de 16 bits en el UNO ni I²C real.</li><li>El ESP32 funciona a 3,3 V: lo que conectes a más de 3,7 V en un pin es una avería, y se avisa.</li><li><code>INPUT_PULLUP</code> activa la resistencia interna: con el pulsador sin pulsar el pin lee 1.</li></ul>
 
   <h2 id="g7">7 · FPGA Alhambra II</h2>
   <ul><li>Dibuja la función con puertas. A cada interruptor, pulsador o LED asígnale un <b>pin de la placa</b> en Propiedades (SW1, SW2, LED0–LED7, D0–D7).</li><li>La placa virtual muestra los LED y deja pulsar los interruptores. Se generan el Verilog y el fichero de pines <code>.pcf</code> equivalentes a lo que harías en Icestudio.</li><li>Pines verificados con el <code>pinout.json</code> oficial de Icestudio para la Alhambra II: SW1 = 34, SW2 = 33, LED0–LED7 = 45, 44, 43, 42, 41, 39, 38, 37, D0–D7 = 2, 1, 4, 3, 8, 7, 10, 9, reloj 12 MHz = 49. Los pulsadores son de lógica positiva (1 al pulsar).</li></ul>
@@ -4404,7 +4451,11 @@ function buildMcuPage() {
   const save = () => { const b = App.board.board.mcu; if (b) b.code = $('#mcc').value; };
   $('#mcb').onchange = (e) => { const b = App.board.board.mcu; if (!b) return; save(); b.board = e.target.value; App.boardEd.changed(); refreshMcu(true); };
   $('#mcx').onchange = (e) => { const id = e.target.value, b = App.board.board.mcu; if (!id || !b) return; if ($('#mcc').value.trim() && $('#mcc').value.trim() !== MCU_TEMPLATE.trim() && !Mcu.EXAMPLE_LIST.some(x => Object.keys(EXP_BOTH).some(bd => Mcu.exampleCode(x.id, bd) === $('#mcc').value)) && !confirm('Se sustituirá el programa actual por el ejemplo. ¿Continuar?')) { e.target.value = ''; return; }
-    $('#mcc').value = Mcu.exampleCode(id, b.board); save(); e.target.value = ''; App.touch(); App.toast('Ejemplo cargado. Cablea los pines indicados en los comentarios y pulsa «Compilar y simular».'); };
+    const cir = Mcu.exampleCircuit(id, b.board), bd = App.board.board;
+    if (cir && bd.items.length && !confirm('El ejemplo también monta su circuito: se sustituirá el montaje actual de la protoboard. ¿Continuar?')) { e.target.value = ''; return; }
+    $('#mcc').value = Mcu.exampleCode(id, b.board); save();
+    if (cir) { bd.items = cir.items.map(x => Object.assign({}, x, { id: 'b' + bd.nid++ })); App.boardEd.sel = null; App.boardEd.changed(); }
+    e.target.value = ''; App.touch(); App.toast(cir ? 'Ejemplo y circuito cargados. Pulsa «Compilar y simular».' : 'Ejemplo cargado. Pulsa «Compilar y simular».'); };
   $('#mcr').onclick = () => { const b = App.board.board.mcu; if (!b) return; save(); App.boardEd.changed(); if (!App.boardEd.running) { App.boardEd.running = true; const t = $('#pg-board [data-a=run]'); t.textContent = '❚❚ Pausar'; } App.touch(); };
   $('#mcs').onclick = () => { App.boardEd.running = false; const b = $('#pg-board [data-a=run]'); b.textContent = '▶ Simular'; };
   $('#mcsc').onclick = () => { if (App.mcuCtl) App.mcuCtl.serial = ''; };
