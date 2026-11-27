@@ -258,13 +258,37 @@ reg('MCP3008', { name: 'ADC MCP3008 (SPI, 8 canales)', group: 'Sensores', spi: {
     return `<rect x="-9" y="${top}" width="${7 * P + 18}" height="${h}" rx="2" fill="#26292b" stroke="#111"/><path d="M-9,${top + h / 2 - 5} a5,5 0 0 1 0,10" fill="#0b0c0d"/><circle cx="2" cy="${top + 6}" r="1.8" fill="#6d716d"/><text x="${3.5 * P}" y="${top + h / 2 - 1}" font-size="9" font-weight="700" fill="#e8e8e4" text-anchor="middle">MCP3008</text><text x="${3.5 * P}" y="${top + h / 2 + 8}" font-size="6.5" fill="#9a9d99" text-anchor="middle">I/P 1234  SPI ADC 10 bit</text>
       ${this.pins.map(q => `<rect x="${q.dx * P - 2.2}" y="${q.hi ? dh - 5 : -5}" width="4.4" height="10" fill="${PINC}" stroke="#7b7e7b" stroke-width=".5"/><text x="${q.dx * P}" y="${q.hi ? top + 8 : top + h - 2}" font-size="4.8" text-anchor="middle" fill="#8f938f" ${q.hi ? '' : ''}>${esc(q.n)}</text>`).join('')}`; } });
 CAT.MCP3008.group = 'Sensores';
+/* ---------- lector RFID RC522 (SPI, 13,56 MHz) ---------- */
+const RFID_CARDS = [null,
+  { name: 'Tarjeta blanca', uid: [0xA3, 0x5F, 0x1C, 0x7B], sak: 0x08, type: 4, color: '#f3f1ea', ink: '#555', txt: 'TARJETA BLANCA  ' },
+  { name: 'Llavero azul', uid: [0x04, 0x9E, 0x2A, 0x11], sak: 0x08, type: 4, color: '#2f6fb5', ink: '#e8f0fa', txt: 'LLAVERO AZUL    ' },
+  { name: 'Etiqueta Ultralight', uid: [0x04, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6], sak: 0x00, type: 6, color: '#c0392b', ink: '#fbe9e6', txt: '' }];
+const hx2 = (v) => (v < 16 ? '0' : '') + v.toString(16).toUpperCase();
+reg('RC522', { name: 'Lector RFID RC522 (SPI)', group: 'Sensores', spi: { ss: 0, sck: 1, mosi: 2, miso: 3, irq: 4, gnd: 5, rst: 6, vcc: 7 }, cards: RFID_CARDS,
+  desc: 'Módulo RFID RC522 (MFRC522, 13,56 MHz): lee y escribe tarjetas MIFARE Classic 1K y Ultralight a ≈3 cm. Alimentación 2,5–3,6 V (¡NO a 5 V: se quema!). Las señales son de 3,3 V: con un UNO (5 V) lo correcto es un divisor o adaptador de nivel. Pines SDA (=SS), SCK, MOSI, MISO, IRQ (sin usar), GND, RST y 3,3 V. Librería MFRC522 (miguelbalboa). Elige la tarjeta en la barra superior.',
+  pins: ['SDA', 'SCK', 'MOSI', 'MISO', 'IRQ', 'GND', 'RST', '3.3V'].map((n, i) => ({ n, dx: i })), box: { x: -40, y: -196, w: 206, h: 204 },
+  stim: [{ k: 'card', label: 'Tarjeta', min: 0, max: 3, step: 1, def: 0, names: ['ninguna', 'blanca', 'llavero azul', 'Ultralight'] }, { k: 'tap', label: 'Acercar de nuevo', type: 'btn' }],
+  model(s, p) { const st = p.st; if (!pwr(p, s, 7, 5, 2.5, 3.7, 0.02)) { st.cur = 0; return; }
+    if (p.stim.tap) { p.stim.tap = 0; if (p.stim.card > 0) st.gap = s.t + 0.5; else st.tapUntil = s.t + 1.2; }
+    st.cur = (p.stim.card > 0 && !(s.t < st.gap)) ? p.stim.card : (s.t < st.tapUntil ? 1 : 0); if (!st.cur) st.done = 0;
+    st.over = [0, 1, 2, 6].some(i => V(s, p, i) > 3.9); },
+  readout: (it, sv) => { const st = statsOf(sv); if (st.ok === false) return 'sin alimentación válida (3,3 V en la pata 8 y GND; ¡no 5 V!)'; const c = RFID_CARDS[st.cur || 0];
+    return (c ? `${c.name}\nUID ${c.uid.map(hx2).join(' ')} (${c.uid.length} bytes)` : 'sin tarjeta en el campo') + (st.over ? '\n⚠ señales a 5 V: fuera de especificación (usa adaptador de nivel)' : ''); }, maxV: 4,
+  draw(it, sv) { const st = statsOf(sv), c = RFID_CARDS[st.cur || 0], ok = st.ok !== false;
+    const ant = [0, 1, 2, 3].map(i => `<rect x="${12 + i * 6}" y="${-176 + i * 6}" width="${140 - i * 12}" height="${112 - i * 12}" rx="${10 - i * 2}" fill="none" stroke="#e6e2d0" stroke-width="2.6"/>`).join('');
+    const card = c ? `<g transform="rotate(-6 82 -118)"><rect x="12" y="-166" width="140" height="92" rx="9" fill="${c.color}" stroke="#0007" stroke-width="1.2"/><rect x="26" y="-150" width="30" height="24" rx="3" fill="#d9b44a" stroke="#8a6d17"/><path d="M26,-138 h30 M41,-150 v24" stroke="#8a6d17" stroke-width=".8"/><text x="70" y="-128" font-size="10" font-weight="700" fill="${c.ink}">${esc(c.name)}</text><text x="26" y="-100" font-size="9" fill="${c.ink}" font-family="monospace">UID ${c.uid.map(hx2).join(' ')}</text></g>` : '';
+    const field = ok && c ? [0, 1, 2].map(i => `<path d="M${14 + i * 5},-182 a${68 - i * 4},${12 + i * 3} 0 0 1 ${136 - i * 10},0" fill="none" stroke="#3be39c" stroke-width="2" opacity="${0.8 - i * 0.22}"/>`).join('') : '';
+    return `<rect x="-36" y="-192" width="198" height="188" rx="5" fill="#1b4f9c" stroke="#0d2f66"/>${hole(-26, -182)}${hole(152, -182)}${hole(-26, -14)}${hole(152, -14)}${ant}
+      <rect x="86" y="-50" width="34" height="26" rx="2" fill="#262a2b" stroke="#111"/><text x="103" y="-34" font-size="6.5" text-anchor="middle" fill="#9aa0a3">MFRC522</text><text x="103" y="-27" font-size="5" text-anchor="middle" fill="#9aa0a3">13.56MHz</text>
+      <rect x="40" y="-50" width="22" height="9" rx="4" fill="#c6ccd0" stroke="#7b8387"/>${smd(64, -48, 9, 5)}${smd(64, -40, 9, 5)}${smd(128, -46, 10, 6)}${smd(128, -36, 10, 6)}<text x="12" y="-26" font-size="9" font-weight="700" fill="#e9f0fb">RC522</text>${field}${card}${pinsSvg(this, true, '#e9f0fb', -9)}`; } });
+
 function oledUrl(st) { if (!st.fb) return ''; if (st.urlv === st.fbv && st.url) return st.url; try { const c = document.createElement('canvas'); c.width = 128; c.height = 64; const x = c.getContext('2d'), im = x.createImageData(128, 64); for (let i = 0; i < 8192; i++) { const o = i * 4, v = st.fb[i]; im.data[o] = v ? 205 : 0; im.data[o + 1] = v ? 232 : 0; im.data[o + 2] = v ? 255 : 0; im.data[o + 3] = 255; } x.putImageData(im, 0, 0); st.url = c.toDataURL(); st.urlv = st.fbv; return st.url; } catch (e) { return ''; } }
 
 /* ---------- protección: alimentación y máximos absolutos (hoja de características) ----------
    [pata +, pata −, máximo absoluto V, ¿se quema con la polaridad invertida?] */
 const SUP = { TMP36: [0, 2, 7, 1], LM35: [0, 2, 35, 1], DHT11: [0, 2, 6, 1], DHT22: [0, 2, 6, 1], DS18B20: [2, 0, 6, 1], HCSR04: [0, 3, 6.5, 1], PIR: [0, 2, 24, 1],
   SOIL: [0, 1, 7, 1], MQ2: [0, 1, 7, 1], FLAME: [0, 1, 7, 1], SERVO: [1, 0, 8, 1], BUZZ: [0, 1, 9, 0], RELAY: [0, 1, 9, 1], MOTOR: [0, 1, 12, 0],
-  BMP280: [0, 1, 6, 1], MPU6050: [0, 1, 6, 1], OLED: [1, 0, 6, 1], MCP3008: [15, 8, 7, 1] };
+  BMP280: [0, 1, 6, 1], MPU6050: [0, 1, 6, 1], OLED: [1, 0, 6, 1], MCP3008: [15, 8, 7, 1], RC522: [7, 5, 4, 1] };
 Object.keys(SUP).forEach(k => { if (CAT[k]) CAT[k].maxV = SUP[k][2]; });
 E.SENSSUP = SUP;
 

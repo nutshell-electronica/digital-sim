@@ -1297,13 +1297,37 @@ reg('MCP3008', { name: 'ADC MCP3008 (SPI, 8 canales)', group: 'Sensores', spi: {
     return `<rect x="-9" y="${top}" width="${7 * P + 18}" height="${h}" rx="2" fill="#26292b" stroke="#111"/><path d="M-9,${top + h / 2 - 5} a5,5 0 0 1 0,10" fill="#0b0c0d"/><circle cx="2" cy="${top + 6}" r="1.8" fill="#6d716d"/><text x="${3.5 * P}" y="${top + h / 2 - 1}" font-size="9" font-weight="700" fill="#e8e8e4" text-anchor="middle">MCP3008</text><text x="${3.5 * P}" y="${top + h / 2 + 8}" font-size="6.5" fill="#9a9d99" text-anchor="middle">I/P 1234  SPI ADC 10 bit</text>
       ${this.pins.map(q => `<rect x="${q.dx * P - 2.2}" y="${q.hi ? dh - 5 : -5}" width="4.4" height="10" fill="${PINC}" stroke="#7b7e7b" stroke-width=".5"/><text x="${q.dx * P}" y="${q.hi ? top + 8 : top + h - 2}" font-size="4.8" text-anchor="middle" fill="#8f938f" ${q.hi ? '' : ''}>${esc(q.n)}</text>`).join('')}`; } });
 CAT.MCP3008.group = 'Sensores';
+/* ---------- lector RFID RC522 (SPI, 13,56 MHz) ---------- */
+const RFID_CARDS = [null,
+  { name: 'Tarjeta blanca', uid: [0xA3, 0x5F, 0x1C, 0x7B], sak: 0x08, type: 4, color: '#f3f1ea', ink: '#555', txt: 'TARJETA BLANCA  ' },
+  { name: 'Llavero azul', uid: [0x04, 0x9E, 0x2A, 0x11], sak: 0x08, type: 4, color: '#2f6fb5', ink: '#e8f0fa', txt: 'LLAVERO AZUL    ' },
+  { name: 'Etiqueta Ultralight', uid: [0x04, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6], sak: 0x00, type: 6, color: '#c0392b', ink: '#fbe9e6', txt: '' }];
+const hx2 = (v) => (v < 16 ? '0' : '') + v.toString(16).toUpperCase();
+reg('RC522', { name: 'Lector RFID RC522 (SPI)', group: 'Sensores', spi: { ss: 0, sck: 1, mosi: 2, miso: 3, irq: 4, gnd: 5, rst: 6, vcc: 7 }, cards: RFID_CARDS,
+  desc: 'Módulo RFID RC522 (MFRC522, 13,56 MHz): lee y escribe tarjetas MIFARE Classic 1K y Ultralight a ≈3 cm. Alimentación 2,5–3,6 V (¡NO a 5 V: se quema!). Las señales son de 3,3 V: con un UNO (5 V) lo correcto es un divisor o adaptador de nivel. Pines SDA (=SS), SCK, MOSI, MISO, IRQ (sin usar), GND, RST y 3,3 V. Librería MFRC522 (miguelbalboa). Elige la tarjeta en la barra superior.',
+  pins: ['SDA', 'SCK', 'MOSI', 'MISO', 'IRQ', 'GND', 'RST', '3.3V'].map((n, i) => ({ n, dx: i })), box: { x: -40, y: -196, w: 206, h: 204 },
+  stim: [{ k: 'card', label: 'Tarjeta', min: 0, max: 3, step: 1, def: 0, names: ['ninguna', 'blanca', 'llavero azul', 'Ultralight'] }, { k: 'tap', label: 'Acercar de nuevo', type: 'btn' }],
+  model(s, p) { const st = p.st; if (!pwr(p, s, 7, 5, 2.5, 3.7, 0.02)) { st.cur = 0; return; }
+    if (p.stim.tap) { p.stim.tap = 0; if (p.stim.card > 0) st.gap = s.t + 0.5; else st.tapUntil = s.t + 1.2; }
+    st.cur = (p.stim.card > 0 && !(s.t < st.gap)) ? p.stim.card : (s.t < st.tapUntil ? 1 : 0); if (!st.cur) st.done = 0;
+    st.over = [0, 1, 2, 6].some(i => V(s, p, i) > 3.9); },
+  readout: (it, sv) => { const st = statsOf(sv); if (st.ok === false) return 'sin alimentación válida (3,3 V en la pata 8 y GND; ¡no 5 V!)'; const c = RFID_CARDS[st.cur || 0];
+    return (c ? `${c.name}\nUID ${c.uid.map(hx2).join(' ')} (${c.uid.length} bytes)` : 'sin tarjeta en el campo') + (st.over ? '\n⚠ señales a 5 V: fuera de especificación (usa adaptador de nivel)' : ''); }, maxV: 4,
+  draw(it, sv) { const st = statsOf(sv), c = RFID_CARDS[st.cur || 0], ok = st.ok !== false;
+    const ant = [0, 1, 2, 3].map(i => `<rect x="${12 + i * 6}" y="${-176 + i * 6}" width="${140 - i * 12}" height="${112 - i * 12}" rx="${10 - i * 2}" fill="none" stroke="#e6e2d0" stroke-width="2.6"/>`).join('');
+    const card = c ? `<g transform="rotate(-6 82 -118)"><rect x="12" y="-166" width="140" height="92" rx="9" fill="${c.color}" stroke="#0007" stroke-width="1.2"/><rect x="26" y="-150" width="30" height="24" rx="3" fill="#d9b44a" stroke="#8a6d17"/><path d="M26,-138 h30 M41,-150 v24" stroke="#8a6d17" stroke-width=".8"/><text x="70" y="-128" font-size="10" font-weight="700" fill="${c.ink}">${esc(c.name)}</text><text x="26" y="-100" font-size="9" fill="${c.ink}" font-family="monospace">UID ${c.uid.map(hx2).join(' ')}</text></g>` : '';
+    const field = ok && c ? [0, 1, 2].map(i => `<path d="M${14 + i * 5},-182 a${68 - i * 4},${12 + i * 3} 0 0 1 ${136 - i * 10},0" fill="none" stroke="#3be39c" stroke-width="2" opacity="${0.8 - i * 0.22}"/>`).join('') : '';
+    return `<rect x="-36" y="-192" width="198" height="188" rx="5" fill="#1b4f9c" stroke="#0d2f66"/>${hole(-26, -182)}${hole(152, -182)}${hole(-26, -14)}${hole(152, -14)}${ant}
+      <rect x="86" y="-50" width="34" height="26" rx="2" fill="#262a2b" stroke="#111"/><text x="103" y="-34" font-size="6.5" text-anchor="middle" fill="#9aa0a3">MFRC522</text><text x="103" y="-27" font-size="5" text-anchor="middle" fill="#9aa0a3">13.56MHz</text>
+      <rect x="40" y="-50" width="22" height="9" rx="4" fill="#c6ccd0" stroke="#7b8387"/>${smd(64, -48, 9, 5)}${smd(64, -40, 9, 5)}${smd(128, -46, 10, 6)}${smd(128, -36, 10, 6)}<text x="12" y="-26" font-size="9" font-weight="700" fill="#e9f0fb">RC522</text>${field}${card}${pinsSvg(this, true, '#e9f0fb', -9)}`; } });
+
 function oledUrl(st) { if (!st.fb) return ''; if (st.urlv === st.fbv && st.url) return st.url; try { const c = document.createElement('canvas'); c.width = 128; c.height = 64; const x = c.getContext('2d'), im = x.createImageData(128, 64); for (let i = 0; i < 8192; i++) { const o = i * 4, v = st.fb[i]; im.data[o] = v ? 205 : 0; im.data[o + 1] = v ? 232 : 0; im.data[o + 2] = v ? 255 : 0; im.data[o + 3] = 255; } x.putImageData(im, 0, 0); st.url = c.toDataURL(); st.urlv = st.fbv; return st.url; } catch (e) { return ''; } }
 
 /* ---------- protección: alimentación y máximos absolutos (hoja de características) ----------
    [pata +, pata −, máximo absoluto V, ¿se quema con la polaridad invertida?] */
 const SUP = { TMP36: [0, 2, 7, 1], LM35: [0, 2, 35, 1], DHT11: [0, 2, 6, 1], DHT22: [0, 2, 6, 1], DS18B20: [2, 0, 6, 1], HCSR04: [0, 3, 6.5, 1], PIR: [0, 2, 24, 1],
   SOIL: [0, 1, 7, 1], MQ2: [0, 1, 7, 1], FLAME: [0, 1, 7, 1], SERVO: [1, 0, 8, 1], BUZZ: [0, 1, 9, 0], RELAY: [0, 1, 9, 1], MOTOR: [0, 1, 12, 0],
-  BMP280: [0, 1, 6, 1], MPU6050: [0, 1, 6, 1], OLED: [1, 0, 6, 1], MCP3008: [15, 8, 7, 1] };
+  BMP280: [0, 1, 6, 1], MPU6050: [0, 1, 6, 1], OLED: [1, 0, 6, 1], MCP3008: [15, 8, 7, 1], RC522: [7, 5, 4, 1] };
 Object.keys(SUP).forEach(k => { if (CAT[k]) CAT[k].maxV = SUP[k][2]; });
 E.SENSSUP = SUP;
 
@@ -2536,7 +2560,7 @@ B.Editor = class {
           if (i.type === 'range') i.oninput = () => { const c = SC().CAT[it.kind].stim.find(q => q.k === k); ap(c.log ? Math.round(Math.pow(10, +i.value) * 100) / 100 : +i.value); }; else if (i.type === 'checkbox') i.onchange = () => ap(i.checked ? 1 : 0); else i.onclick = () => ap(1); }); }); }
     host.hidden = !its.length;
   }
-  fmtStim(it, k) { const c = SC().CAT[it.kind].stim.find(q => q.k === k), v = it.stim[k]; return (Math.abs(v) >= 1000 ? Math.round(v) : (+v).toFixed(c.step && c.step < 1 ? (c.step < 0.1 ? 2 : 1) : 0)).toString().replace('.', ',') + (c.unit ? ' ' + c.unit : ''); }
+  fmtStim(it, k) { const c = SC().CAT[it.kind].stim.find(q => q.k === k), v = it.stim[k]; if (c.names) return c.names[Math.round(v)] || ''; return (Math.abs(v) >= 1000 ? Math.round(v) : (+v).toFixed(c.step && c.step < 1 ? (c.step < 0.1 ? 2 : 1) : 0)).toString().replace('.', ',') + (c.unit ? ' ' + c.unit : ''); }
   sensProps(it) { const c = SC().CAT[it.kind]; let h = `<p class="mut">${esc(c.desc)}</p><div class="dmm" id="sread">—</div>`;
     if ((c.stim || []).length) h += `<p class="mut sm">Los controles del sensor (${esc(c.stim.map(q => q.label).join(', '))}) están en la barra superior.</p>`;
     (c.props || []).forEach(q => { h += `<label>${esc(q.label)}<select data-so="${q.k}">${q.opts.map(o => `<option value="${esc(o)}" ${it.o[q.k] === o ? 'selected' : ''}>${esc(q.fmt ? q.fmt(o) : o)}</option>`).join('')}</select></label>`; });
@@ -2784,6 +2808,10 @@ M.transpile = function (src) {
   code = code.replace(/\b(\w+)\.getEvent\s*\(([^)]*)\)/g, (m, o, a) => `${o}.getEvent(${a.replace(/&/g, '')})`);
   code = code.replace(/\bAdafruit_MCP3008\s+(\w+)\s*;/g, (m, n) => `const ${n} = __mcp();`);
   code = code.replace(/\bMCP3008\s+(\w+)\s*\(([^;]*)\)\s*;/g, (m, n, a) => `const ${n} = __mcp(${a});`);
+  code = code.replace(/\bString\s*\(/g, '__strc(').replace(/(^|[;{}\n])(\s*)(\w+)\.concat\s*\(([^\n]*)\)\s*;/g, '$1$2$3 += ($4);').replace(/(^|[;{}\n])(\s*)(\w+)\.(toUpperCase|toLowerCase|trim)\s*\(\s*\)\s*;/g, '$1$2$3 = $3.$4();');
+  code = code.replace(/\bMFRC522\s+(\w+)\s*\(([^;]*)\)\s*;/g, (m, n, a) => `const ${n} = __rfid(${a});`);
+  code = code.replace(/\b(?:MFRC522::)?MIFARE_Key\s+(\w+)\s*;/g, (m, n) => `const ${n} = { keyByte: [0, 0, 0, 0, 0, 0] };`);
+  code = code.replace(/\bMFRC522::(?:StatusCode|PICC_Type)\s+(\w+)/g, 'let $1').replace(/\bMFRC522::/g, '').replace(/([(,]\s*)&\s*(\w[\w.]*|\([^()]*\))/g, '$1$2');
   code = code.replace(/\bAdafruit_\w+::\w+/g, '0');
   // arrays
   code = code.replace(new RegExp(`${QUAL}(${TYPES})\\s+(\\w+)\\s*\\[\\s*(\\w*)\\s*\\]\\s*=\\s*\\{([^}]*)\\}\\s*;`, 'g'), (m, t, n, sz, init) => `let ${n} = [${init}];`);
@@ -2805,7 +2833,7 @@ M.transpile = function (src) {
   if (intVars.size) { const asg = new RegExp(`(^|[;{}\\n]\\s*|\\(\\s*)(${[...intVars].join('|')})\\s*=(?!=)`, 'g'); let o2 = '', l2 = 0, m2; while ((m2 = asg.exec(code))) { const start = m2.index + m2[0].length, e = exprEnd(code, start); if (/\blet\s*$/.test(code.slice(0, m2.index + m2[1].length))) continue; o2 += code.slice(l2, start) + ' __i(' + code.slice(start, e) + ')'; l2 = e; asg.lastIndex = e; } code = o2 + code.slice(l2); }
   code = code.replace(/\b(\d+\.\d*|\.\d+)[fF]\b/g, '$1').replace(/\b(\d+)[uU]?[lL]{1,2}\b/g, '$1').replace(/\b(\d+)[uU]\b/g, '$1');
   code = code.replace(/\bsprintf\s*\(\s*(\w+)\s*,/g, '$1 = __sprintf(').replace(/\bsnprintf\s*\(\s*(\w+)\s*,[^,]+,/g, '$1 = __sprintf(');
-  code = code.replace(/\bsizeof\s*\(\s*(\w+)\s*\)\s*\/\s*sizeof\s*\(\s*\w+\s*\[\s*0\s*\]\s*\)/g, '$1.length').replace(/\bstrlen\s*\(/g, '__strlen(').replace(/\.length\s*\(\s*\)/g, '.length');
+  code = code.replace(/\bsizeof\s*\(\s*(\w+)\s*\)\s*\/\s*sizeof\s*\(\s*\w+\s*\[\s*0\s*\]\s*\)/g, '$1.length').replace(/\bsizeof\s*\(\s*(?!int\b|byte\b|char\b|float\b|long\b)(\w+)\s*\)/g, '$1.length').replace(/\bstrlen\s*\(/g, '__strlen(').replace(/\.length\s*\(\s*\)/g, '.length');
   code = code.replace(/\((?:unsigned\s+)?(?:int|long|short|byte|uint8_t|uint16_t|uint32_t|char)\)\s*\(/g, '__i(').replace(/\((?:unsigned\s+)?(?:int|long|short|byte|uint8_t|uint16_t|uint32_t|char)\)\s*(\w+)/g, '__i($1)').replace(/\((?:float|double)\)\s*/g, '');
   code = code.replace(/\b(?:delay|delayMicroseconds|pulseIn)\s*\(/g, m => 'yield* ' + m).replace(/\b(\w+)\.requestTemperatures\s*\(/g, 'yield* $1.requestTemperatures(');
   funcs.forEach(f => { code = code.replace(new RegExp(`(?<!function\\*\\s)(?<![\\w.])${f}\\s*\\(`, 'g'), m => 'yield* ' + m); });
@@ -2838,7 +2866,7 @@ class McuCtl {
   compile() {
     const tr = M.transpile(this.src); this.tr = tr; const me = this, UNO = this.board === 'UNO';
     const R = {
-      HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2, LED_BUILTIN: UNO ? 13 : 48, A0: 14, A1: 15, A2: 16, A3: 17, A4: 18, A5: 19, DEC: 'DEC', HEX: 'HEX', BIN: 'BIN', OCT: 'OCT', PI: Math.PI,
+      HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2, LED_BUILTIN: UNO ? 13 : 48, A0: 14, A1: 15, A2: 16, A3: 17, A4: 18, A5: 19, DEC: 'DEC', HEX: 'HEX', BIN: 'BIN', OCT: 'OCT', STATUS_OK: 0, STATUS_ERROR: 1, STATUS_TIMEOUT: 3, PICC_CMD_MF_AUTH_KEY_A: 0x60, PICC_CMD_MF_AUTH_KEY_B: 0x61, PICC_TYPE_UNKNOWN: 0, PICC_TYPE_ISO_14443_4: 1, PICC_TYPE_ISO_18092: 2, PICC_TYPE_MIFARE_MINI: 3, PICC_TYPE_MIFARE_1K: 4, PICC_TYPE_MIFARE_4K: 5, PICC_TYPE_MIFARE_UL: 6, PICC_TYPE_MIFARE_PLUS: 7, PICC_TYPE_MIFARE_DESFIRE: 8, PICC_TYPE_TNP3XXX: 9, PICC_TYPE_NOT_COMPLETE: 255, PI: Math.PI,
       pinMode: (p, m) => { me.pm[p] = m; delete me.pwm[p]; }, digitalWrite: (p, v) => { me.out[p] = v ? 1 : 0; if (v) me.gl[p] = 1; delete me.pwm[p]; },
       digitalRead: (p) => me.inl[p] ? 1 : 0, analogRead: (p) => { const k = this.idxOf[p]; if (k === undefined || !me.sim) return 0; const v = me.sim.vp[me.part.pins[k]]; return Math.max(0, Math.min(UNO ? 1023 : 4095, Math.round(v / me.vdd * (UNO ? 1023 : 4095)))); },
       analogWrite: (p, v) => { me.pwm[p] = Math.max(0, Math.min(255, v)) / 255; me.pm[p] = 1; },
@@ -2877,6 +2905,7 @@ class McuCtl {
           drawRect: (x, y, w, h, c) => { line(x, y, x + w - 1, y, c); line(x, y + h - 1, x + w - 1, y + h - 1, c); line(x, y, x, y + h - 1, c); line(x + w - 1, y, x + w - 1, y + h - 1, c); }, fillRect: (x, y, w, h, c) => fillR(x, y, w, h, c), drawRoundRect: (x, y, w, h, r, c) => { line(x, y, x + w - 1, y, c); line(x, y + h - 1, x + w - 1, y + h - 1, c); line(x, y, x, y + h - 1, c); line(x + w - 1, y, x + w - 1, y + h - 1, c); }, fillRoundRect: (x, y, w, h, r, c) => fillR(x, y, w, h, c),
           drawCircle: (x, y, r, c) => circ(x, y, r, c, false), fillCircle: (x, y, r, c) => circ(x, y, r, c, true), drawTriangle: (a, b, c, d, e, f, g) => { line(a, b, c, d, g); line(c, d, e, f, g); line(e, f, a, b, g); }, fillScreen: (c) => fb.fill(c ? 1 : 0),
           drawBitmap: (x, y, bm, w, h, c) => { const bw = (w + 7) >> 3; for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if ((bm[j * bw + (i >> 3)] >> (7 - (i & 7))) & 1) px(x + i, y + j, c); }, invertDisplay: () => { }, dim: () => { }, ssd1306_command: () => { }, startscrollright: () => { }, stopscroll: () => { } }; },
+      __strc: (x, b) => typeof x === 'number' ? me.fmt(x, b) : String(x), __rfid: (ss, rst) => me.mkRfid(ss, rst),
       __mcp: (a, b, c, d) => { let cs = me.spi.cs, sck = me.spi.sck, miso = me.spi.miso, mosi = me.spi.mosi; if (d !== undefined) { sck = a; miso = b; mosi = c; cs = d; } else if (a !== undefined) cs = a; const dev = () => me.mcpAt(sck, miso, mosi, cs);
         return { begin: (p, q, r, t) => { if (t !== undefined) { sck = p; mosi = q; miso = r; cs = t; } else if (p !== undefined) cs = p; return !!dev(); }, readADC: (ch) => me.mcpVal(dev(), ch), read: (ch) => me.mcpVal(dev(), ch), analogRead: (ch) => me.mcpVal(dev(), ch), maxValue: () => 1023 }; },
       pulseIn: function* (p, lvl, to) { const lim = (to === undefined ? 1e6 : to) / 1e6, t0 = me.t, L = lvl ? 1 : 0, st = () => me.sim ? me.sim.dt : 5e-5;
@@ -2919,6 +2948,33 @@ class McuCtl {
     for (let i = 0; i < n; i++, p++) { let v = 0; if (d.kind === 'MPU6050') { this.mpuInit(d); if (p >= 0x3B && p <= 0x48) { const r = this.mpuRead(d), al = d.st.sleep ? 1 : [16384, 8192, 4096, 2048][(d.st.regs[0x1C] >> 3) & 3], gl = d.st.sleep ? 1 : [131, 65.5, 32.8, 16.4][(d.st.regs[0x1B] >> 3) & 3];
           const w = [i16(r.a[0] * al), i16(r.a[1] * al), i16(r.a[2] * al), i16(d.st.sleep ? 0 : (r.t - 36.53) * 340), i16(r.g[0] * gl), i16(r.g[1] * gl), i16(r.g[2] * gl)], j = p - 0x3B; v = (j & 1) ? w[j >> 1] & 255 : w[j >> 1] >> 8; } else v = d.st.regs[p] || 0; }
       else if (d.kind === 'BMP280') v = p === 0xD0 ? 0x58 : 0; out.push(v); } d.st.ptr = p; return out; }
+  rfidAt(ss, rst) { if (!this.sim) return null; const nss = this.nodeOf(ss), nk = this.nodeOf(this.spi.sck), nm = this.nodeOf(this.spi.miso), no = this.nodeOf(this.spi.mosi); if (nss == null || nk == null) return null;
+    for (const q of this.sim.parts) if (q.type === 'SENS' && q.kind === 'RC522' && q.st.ok && q.pins[0] === nss && q.pins[1] === nk && q.pins[2] === no && q.pins[3] === nm) { const nr = q.pins[6]; if (nr != null && this.sim.vp[nr] < 0.5 && !(rst != null && this.pm[rst] === 1 && this.out[rst] === 1)) continue; return q; } return null; }
+  rfidMem(d) { const st = d.st, ci = st.cur, C = root.SensCat.CAT.RC522.cards[ci]; st.mem = st.mem || {}; if (st.mem[ci]) return st.mem[ci]; const m = []; const trailer = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x07, 0x80, 0x69, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+    if (C.type === 6) { for (let i = 0; i < 16; i++) m.push([0, 0, 0, 0]); for (let i = 0; i < 3; i++) m[0][i] = C.uid[i]; m[0][3] = 0x88 ^ C.uid[0] ^ C.uid[1] ^ C.uid[2]; for (let i = 0; i < 4; i++) m[1][i] = C.uid[3 + i]; m[2] = [C.uid[6] ^ C.uid[3] ^ C.uid[4] ^ C.uid[5], 0x48, 0, 0]; m[3] = [0xE1, 0x10, 0x06, 0]; }
+    else { for (let i = 0; i < 64; i++) m.push(i % 4 === 3 ? trailer.slice() : new Array(16).fill(0)); const u = C.uid, b0 = u.concat([u[0] ^ u[1] ^ u[2] ^ u[3], C.sak, 0x04, 0x00, 0x01, 0x6F, 0x01, 0xD1, 0x00]).concat(new Array(16).fill(0)).slice(0, 16); m[0] = b0; m[4] = Array.from(C.txt).map(ch => ch.charCodeAt(0)); }
+    return (st.mem[ci] = m); }
+  mkRfid(ss, rst) { const me = this, uid = { size: 0, uidByte: new Array(10).fill(0), sak: 0 }; let init = false, authSec = -1; const dev = () => init ? me.rfidAt(ss, rst) : null, hex = (v) => (v < 16 ? '0' : '') + v.toString(16).toUpperCase(), P = (t) => me.sprint(t);
+    const names = { 0: 'Unknown type', 1: 'PICC compliant with ISO/IEC 14443-4', 2: 'PICC compliant with ISO/IEC 18092 (NFC)', 3: 'MIFARE Mini, 320 bytes', 4: 'MIFARE 1KB', 5: 'MIFARE 4KB', 6: 'MIFARE Ultralight or Ultralight C', 7: 'MIFARE Plus', 8: 'MIFARE DESFire', 9: 'MIFARE TNP3XXX', 255: 'SAK indicates UID is not complete.' };
+    const bv = (v) => typeof v === 'string' ? v.charCodeAt(0) & 255 : v & 255, cur = () => { const d = dev(); return d && d.st.cur ? d : null; }, cards = () => root.SensCat.CAT.RC522.cards, isUL = (d) => cards()[d.st.cur].type === 6;
+    const dumpClassic = (d) => { const m = me.rfidMem(d); P('Sector Block   0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15  AccessBits\n'); for (let sec = 15; sec >= 0; sec--) for (let k = 3; k >= 0; k--) { const bl = sec * 4 + k; P((k === 3 ? ('  ' + sec).slice(-4) + '   ' : '       ') + ('   ' + bl).slice(-4) + '  ' + m[bl].map(hex).join(' ') + '  [ ' + (k === 3 ? '0 0 1' : '0 0 0') + ' ]\n'); } };
+    const o = { uid,
+      PCD_Init: () => { init = true; if (rst !== undefined && rst >= 0 && rst !== 255) { me.pm[rst] = 1; me.out[rst] = 1; me.gl[rst] = 1; } }, PCD_Reset: () => { }, PCD_AntennaOn: () => { }, PCD_AntennaOff: () => { }, PCD_SetAntennaGain: () => { }, PCD_GetAntennaGain: () => 64, PCD_StopCrypto1: () => { authSec = -1; },
+      PCD_PerformSelfTest: () => !!dev(), PCD_ReadRegister: (r) => (r === 0x37 && dev() ? 0x92 : 0), PCD_IsAwake: () => !!dev(),
+      PCD_DumpVersionToSerial: () => { const ok = !!dev(); P('Firmware Version: 0x' + (ok ? '92' : '00') + (ok ? ' = v2.0' : ' = (unknown)') + '\n'); if (!ok) P('WARNING: Communication failure, is the MFRC522 properly connected?\n'); },
+      PICC_IsNewCardPresent: () => { const d = dev(); return !!(d && d.st.cur && d.st.done !== d.st.cur); },
+      PICC_ReadCardSerial: () => { const d = cur(); if (!d || d.st.done === d.st.cur) return false; const C = cards()[d.st.cur]; uid.size = C.uid.length; uid.sak = C.sak; for (let i = 0; i < 10; i++) uid.uidByte[i] = C.uid[i] || 0; d.st.done = d.st.cur; authSec = -1; return true; },
+      PICC_HaltA: () => 0, PICC_WakeupA: () => 0, PICC_RequestA: () => 0,
+      PICC_GetType: (sak) => { sak &= 0x7F; return sak === 0x04 ? 255 : sak === 0x09 ? 3 : sak === 0x08 ? 4 : sak === 0x18 ? 5 : sak === 0x00 ? 6 : sak === 0x11 || sak === 0x01 ? 7 : sak === 0x20 ? 1 : sak === 0x40 ? 2 : 0; },
+      PICC_GetTypeName: (t) => names[t] || 'Unknown type', GetStatusCodeName: (c) => ({ 0: 'Success.', 1: 'Error in communication.', 3: 'Timeout in communication.' }[c] || 'Unknown error'),
+      PCD_Authenticate: (cmd, block, key, u) => { const d = cur(); if (!d || isUL(d)) return 3; const m = me.rfidMem(d), tb = m[(block >> 2) * 4 + 3], kb = cmd === 0x61 ? tb.slice(10, 16) : tb.slice(0, 6); if (key && key.keyByte && key.keyByte.every((v, i) => (v & 255) === kb[i])) { authSec = block >> 2; return 0; } authSec = -1; return 3; },
+      MIFARE_Read: (block, buf) => { const d = cur(); if (!d) return 3; const m = me.rfidMem(d); if (isUL(d)) { for (let i = 0; i < 16; i++) buf[i] = m[(block + (i >> 2)) % 16][i & 3]; buf[16] = buf[17] = 0; return 0; } if (authSec !== block >> 2 || block > 63) return 3; for (let i = 0; i < 16; i++) buf[i] = m[block][i]; buf[16] = buf[17] = 0; return 0; },
+      MIFARE_Write: (block, buf) => { const d = cur(); if (!d || isUL(d) || authSec !== block >> 2 || block < 1 || block > 63) return 3; const m = me.rfidMem(d); for (let i = 0; i < 16; i++) m[block][i] = bv(buf[i]); return 0; },
+      MIFARE_Ultralight_Write: (page, buf) => { const d = cur(); if (!d || !isUL(d) || page < 4 || page > 15) return 3; const m = me.rfidMem(d); for (let i = 0; i < 4; i++) m[page][i] = bv(buf[i]); return 0; },
+      PICC_DumpToSerial: () => { const d = cur(); if (!d) return; const C = cards()[d.st.cur]; P('Card UID:' + C.uid.map(v => ' ' + hex(v)).join('') + '\nCard SAK: ' + hex(C.sak) + '\nPICC type: ' + names[C.type] + '\n');
+        if (C.type === 6) { P('Page  0  1  2  3\n'); const m = me.rfidMem(d); for (let pg = 0; pg < 16; pg++) P(('  ' + pg).slice(-3) + '  ' + m[pg].map(hex).join(' ') + '\n'); } else { dumpClassic(d); } },
+      PICC_DumpMifareClassicToSerial: () => { const d = cur(); if (d && !isUL(d)) dumpClassic(d); }, PICC_DumpDetailsToSerial: () => o.PICC_DumpToSerial() };
+    return o; }
   mcpAt(sck, miso, mosi, cs) { if (!this.sim) return null; const nk = this.nodeOf(sck), nm = this.nodeOf(miso), no = this.nodeOf(mosi), nc = this.nodeOf(cs); if (nk == null || nc == null) return null;
     for (const q of this.sim.parts) if (q.type === 'SENS' && q.kind === 'MCP3008' && q.st.ok && q.pins[12] === nk && q.pins[9] === nc && q.pins[11] === nm && q.pins[10] === no) return q; return null; }
   mcpVal(d, ch) { if (!d || ch < 0 || ch > 7) return 0; const v = this.sim.vp, n = d.pins[ch], vr = v[d.pins[14]] - v[d.pins[13]]; if (vr < 0.3) return 0; return Math.max(0, Math.min(1023, Math.floor(((n == null ? 0 : v[n]) - v[d.pins[13]]) / vr * 1024))); }
@@ -3034,6 +3090,8 @@ M.exampleCircuit = function (id, bd) {
     case 'bmp280': { const b = bus(), a = sens('BMP280', 5); w(a(0), V3); w(a(1), G); w(a(2), sk(b.scl)); w(a(3), sk(b.sda)); w(a(5), G); break; }
     case 'mpu6050': { const b = bus(), m = sens('MPU6050', 5); w(m(0), V3); w(m(1), G); w(m(2), sk(b.scl)); w(m(3), sk(b.sda)); w(m(6), G); break; }
     case 'oled': { const b = bus(), o = sens('OLED', 5); w(o(0), G); w(o(1), V3); w(o(2), sk(b.scl)); w(o(3), sk(b.sda)); break; }
+    case 'rfid': case 'rfid_dump': { const r = sens('RC522', 5), sp = uno ? { k: 13, mi: 12, mo: 11 } : { k: 12, mi: 13, mo: 11 }; w(r(0), sk(10)); w(r(1), sk(sp.k)); w(r(2), sk(sp.mo)); w(r(3), sk(sp.mi)); w(r(5), G); w(r(6), sk(P.B)); w(r(7), V3);
+      if (id === 'rfid') { led(20, P.L, 'green'); led(27, P.L2, 'red'); } break; }
     case 'mcp3008': { sens('MCP3008', 5); const p = sens('POT', 22), hi = (dx) => hl(5 + dx, 'j'); w(p(0), VA); w(p(4), G); w(p(2), hl(5));
       w(hi(0), VA); w(hi(1), VA); w(hi(2), G); w(hi(7), G); w(hi(3), sk(uno ? 13 : 12)); w(hi(4), sk(uno ? 12 : 13)); w(hi(5), sk(11)); w(hi(6), sk(P.B)); break; }
     default: return null;
@@ -3524,6 +3582,80 @@ void loop() {
   for (int c = 0; c < 8; c++) { Serial.print(adc.readADC(c)); Serial.print(" "); }
   Serial.println();
   delay(500);
+}
+` },
+  { id: 'rfid', title: '27 · Control de acceso con RFID RC522 (SPI)', code: (p) => `// RC522 por SPI: SDA(SS) = 10, SCK, MOSI y MISO a los pines SPI, RST = ${p.B}, alimentado a 3,3 V.
+// Elige la tarjeta en la barra superior (o «Acercar de nuevo»). Se acepta la tarjeta blanca (A3 5F 1C 7B).
+#include <SPI.h>
+#include <MFRC522.h>
+#define SS_PIN 10
+#define RST_PIN ${p.B}
+MFRC522 rfid(SS_PIN, RST_PIN);
+byte autorizada[4] = {0xA3, 0x5F, 0x1C, 0x7B};
+void setup() {
+  Serial.begin(9600);
+  SPI.begin();
+  rfid.PCD_Init();
+  rfid.PCD_DumpVersionToSerial();
+  pinMode(${p.L}, OUTPUT);
+  pinMode(${p.L2}, OUTPUT);
+  Serial.println("Acerca una tarjeta...");
+}
+void loop() {
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
+  Serial.print("UID:");
+  bool ok = rfid.uid.size == 4;
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    Serial.print(rfid.uid.uidByte[i] < 0x10 ? " 0" : " ");
+    Serial.print(rfid.uid.uidByte[i], HEX);
+    if (i < 4 && rfid.uid.uidByte[i] != autorizada[i]) ok = false;
+  }
+  Serial.println();
+  Serial.println(ok ? "ACCESO CONCEDIDO" : "ACCESO DENEGADO");
+  digitalWrite(${p.L}, ok);
+  digitalWrite(${p.L2}, !ok);
+  delay(1500);
+  digitalWrite(${p.L}, LOW);
+  digitalWrite(${p.L2}, LOW);
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+}
+` },
+  { id: 'rfid_dump', title: '28 · Volcado de una tarjeta RFID (MIFARE)', code: (p) => `// Lee y escribe bloques de la tarjeta. Clave de fábrica FF FF FF FF FF FF. Prueba con la tarjeta blanca o el llavero azul.
+#include <SPI.h>
+#include <MFRC522.h>
+MFRC522 rfid(10, ${p.B});
+MFRC522::MIFARE_Key key;
+void setup() {
+  Serial.begin(9600);
+  SPI.begin();
+  rfid.PCD_Init();
+  for (byte i = 0; i < 6; i++) key.keyByte[i] = 0xFF;
+  Serial.println("Acerca una tarjeta MIFARE...");
+}
+void loop() {
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
+  MFRC522::PICC_Type tipo = rfid.PICC_GetType(rfid.uid.sak);
+  Serial.println(rfid.PICC_GetTypeName(tipo));
+  if (tipo == MFRC522::PICC_TYPE_MIFARE_1K) {
+    byte bloque = 4;
+    MFRC522::StatusCode st = rfid.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, bloque, &key, &(rfid.uid));
+    if (st == MFRC522::STATUS_OK) {
+      byte datos[16] = {'H','o','l','a',' ','E','M','I',' ','2','0','2','6',' ',' ',' '};
+      rfid.MIFARE_Write(bloque, datos, 16);
+      byte buf[18];
+      byte tam = sizeof(buf);
+      rfid.MIFARE_Read(bloque, buf, &tam);
+      Serial.print("Bloque 4: ");
+      for (byte i = 0; i < 16; i++) Serial.write(buf[i]);
+      Serial.println();
+    } else {
+      Serial.println("Fallo de autenticación");
+    }
+  }
+  rfid.PICC_DumpToSerial(&(rfid.uid));
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
 }
 ` }
 ];
@@ -4397,7 +4529,7 @@ function buildGuide() {
   <ul><li><b>Cómo se usan</b>: arrastra la pieza a la placa; sus patillas entran en una fila de agujeros (en la placa se ve la etiqueta de cada patilla). Alimenta cada módulo según su hoja de características y comprueba con el multímetro. Con la pieza seleccionada, el panel de la derecha muestra sus <b>estímulos físicos</b>: temperatura, luz, distancia, humedad, movimiento, giro del potenciómetro, etc. Cambia el control y el circuito reacciona.</li>
   <li><b>Sensores</b>: potenciómetro, joystick KY-023, LDR, NTC 10 kΩ, TMP36, LM35, DHT11, DHT22, DS18B20, HC-SR04, PIR HC-SR501, humedad de suelo FC-28, gas MQ-2 y llama IR. <b>Actuadores</b>: servo SG90, zumbador activo y pasivo (suenan de verdad), módulo relé, motor DC y LED RGB.</li>
   <li><b>Programación</b>: en el editor de la placa funcionan <code>pulseIn</code>, <code>tone/noTone</code>, <code>analogWrite</code>, <code>Servo.h</code>, <code>DHT.h</code>, <code>OneWire.h</code> y <code>DallasTemperature.h</code>. Hay un ejemplo de cada sensor en la lista de ejemplos del editor.</li>
-  <li><b>Buses I²C y SPI</b>: BMP280, MPU6050 y OLED SSD1306 (I²C: SDA/SCL del UNO = A4/A5, del ESP32-S3 = GPIO8/9) y ADC MCP3008 (SPI). Cablea como en la realidad: el dispositivo solo responde si está alimentado y sus patillas van a los pines del bus. Se emulan a nivel de librería (Wire, SPI, Adafruit_BMP280, Adafruit_MPU6050, Adafruit_SSD1306, MCP3008), sin temporización de bits.</li>
+  <li><b>Buses I²C y SPI</b>: BMP280, MPU6050 y OLED SSD1306 (I²C: SDA/SCL del UNO = A4/A5, del ESP32-S3 = GPIO8/9) ADC MCP3008 y lector RFID RC522 (SPI; alimentado a 3,3 V, con tarjetas elegibles en la barra superior y librería MFRC522: UID, lectura/escritura de bloques y volcado). Cablea como en la realidad: el dispositivo solo responde si está alimentado y sus patillas van a los pines del bus. Se emulan a nivel de librería (Wire, SPI, Adafruit_BMP280, Adafruit_MPU6050, Adafruit_SSD1306, MCP3008), sin temporización de bits.</li>
   <li><b>Editor de código</b>: «⤢ Ampliar» lo abre a casi toda la pantalla (con el monitor serie y la LCD al lado; Esc o «⤡ Reducir» vuelve); también puedes arrastrar la barra gris bajo el editor o usar ▲ ▼ para cambiar su alto.</li>
   <li><b>Arrastrar piezas</b>: se mueven con libertad; solo se «imantan» a un agujero cuando quedan a menos de unos 6 px. Una pieza que queda entre agujeros no conecta con nada.</li>
   <li><b>Protección</b>: los sensores y actuadores se queman si se alimentan por encima de su máximo absoluto (p. ej. DHT 6 V, TMP36 7 V) o con la polaridad invertida. En la placa, un pin con más de 5,5 V (UNO) o 3,6 V (ESP32-S3), o que maneje más de 40 mA durante un rato, queda dañado y deja de leer y escribir. Un LED sin resistencia se funde antes que el pin. Pulsa «Reiniciar» (barra de la protoboard) y todo vuelve a estar sano.</li>

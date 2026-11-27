@@ -525,7 +525,7 @@ B.Editor = class {
           if (i.type === 'range') i.oninput = () => { const c = SC().CAT[it.kind].stim.find(q => q.k === k); ap(c.log ? Math.round(Math.pow(10, +i.value) * 100) / 100 : +i.value); }; else if (i.type === 'checkbox') i.onchange = () => ap(i.checked ? 1 : 0); else i.onclick = () => ap(1); }); }); }
     host.hidden = !its.length;
   }
-  fmtStim(it, k) { const c = SC().CAT[it.kind].stim.find(q => q.k === k), v = it.stim[k]; return (Math.abs(v) >= 1000 ? Math.round(v) : (+v).toFixed(c.step && c.step < 1 ? (c.step < 0.1 ? 2 : 1) : 0)).toString().replace('.', ',') + (c.unit ? ' ' + c.unit : ''); }
+  fmtStim(it, k) { const c = SC().CAT[it.kind].stim.find(q => q.k === k), v = it.stim[k]; if (c.names) return c.names[Math.round(v)] || ''; return (Math.abs(v) >= 1000 ? Math.round(v) : (+v).toFixed(c.step && c.step < 1 ? (c.step < 0.1 ? 2 : 1) : 0)).toString().replace('.', ',') + (c.unit ? ' ' + c.unit : ''); }
   sensProps(it) { const c = SC().CAT[it.kind]; let h = `<p class="mut">${esc(c.desc)}</p><div class="dmm" id="sread">—</div>`;
     if ((c.stim || []).length) h += `<p class="mut sm">Los controles del sensor (${esc(c.stim.map(q => q.label).join(', '))}) están en la barra superior.</p>`;
     (c.props || []).forEach(q => { h += `<label>${esc(q.label)}<select data-so="${q.k}">${q.opts.map(o => `<option value="${esc(o)}" ${it.o[q.k] === o ? 'selected' : ''}>${esc(q.fmt ? q.fmt(o) : o)}</option>`).join('')}</select></label>`; });
