@@ -809,7 +809,7 @@ void loop() {
 }
 ` },
   { id: 'rfid', title: '27 · Control de acceso con RFID RC522 (SPI)', code: (p) => `// RC522 por SPI: SDA(SS) = 10, SCK, MOSI y MISO a los pines SPI, RST = ${p.B}, alimentado a 3,3 V.
-// Elige la tarjeta en la barra superior (o «Acercar de nuevo»). Se acepta la tarjeta blanca (A3 5F 1C 7B).
+// Elige la tarjeta en la barra superior y pulsa «Acercar tarjeta» (se queda 1,5 s sobre el lector). Se acepta la tarjeta blanca (A3 5F 1C 7B).
 #include <SPI.h>
 #include <MFRC522.h>
 #define SS_PIN 10

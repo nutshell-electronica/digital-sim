@@ -513,6 +513,7 @@ B.Editor = class {
     (c.stim || []).forEach(q => { const v = it.stim[q.k];
       if (q.type === 'bool') h += `<label class="chk hs-c"><input type="checkbox" data-sk="${q.k}" ${v ? 'checked' : ''}> ${esc(q.label)}</label>`;
       else if (q.type === 'btn') h += `<button class="b sm" data-sk="${q.k}">${esc(q.label)}</button>`;
+      else if (q.type === 'sel') h += `<label class="hs-c">${esc(q.label)} <select data-sk="${q.k}">${q.opts.map((o, n) => `<option value="${n + (q.base || 0)}" ${(+v) === n + (q.base || 0) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`;
       else h += `<label class="hs-c">${esc(q.label)} <b data-sv="${q.k}">${this.fmtStim(it, q.k)}</b><input type="range" data-sk="${q.k}" ${q.log ? `min="${Math.log10(q.min)}" max="${Math.log10(q.max)}" step="0.01" value="${Math.log10(Math.max(v, q.min))}"` : `min="${q.min}" max="${q.max}" step="${q.step || 1}" value="${v}"`}></label>`; });
     return h; }
   stimStrip(host) {
@@ -522,7 +523,7 @@ B.Editor = class {
       host.querySelectorAll('.hs').forEach(box => { const it = this.board.items.find(x => x.id === box.dataset.hid); if (!it) return;
         box.querySelector('.hn').onclick = () => { this.sel = it.id; this.dirty = true; this.showProps(); };
         box.querySelectorAll('[data-sk]').forEach(i => { const k = i.dataset.sk, ap = (v) => { it.stim[k] = v; const ix = this.refs[it.id], sp = typeof ix === 'number' ? this.sim.parts[ix] : null; if (sp) sp.stim[k] = v; this.dirty = true; const o = box.querySelector('[data-sv="' + k + '"]'); if (o) o.textContent = this.fmtStim(it, k); };
-          if (i.type === 'range') i.oninput = () => { const c = SC().CAT[it.kind].stim.find(q => q.k === k); ap(c.log ? Math.round(Math.pow(10, +i.value) * 100) / 100 : +i.value); }; else if (i.type === 'checkbox') i.onchange = () => ap(i.checked ? 1 : 0); else i.onclick = () => ap(1); }); }); }
+          if (i.type === 'range') i.oninput = () => { const c = SC().CAT[it.kind].stim.find(q => q.k === k); ap(c.log ? Math.round(Math.pow(10, +i.value) * 100) / 100 : +i.value); }; else if (i.type === 'checkbox') i.onchange = () => ap(i.checked ? 1 : 0); else if (i.tagName === 'SELECT') i.onchange = () => ap(+i.value); else i.onclick = () => ap(1); }); }); }
     host.hidden = !its.length;
   }
   fmtStim(it, k) { const c = SC().CAT[it.kind].stim.find(q => q.k === k), v = it.stim[k]; if (c.names) return c.names[Math.round(v)] || ''; return (Math.abs(v) >= 1000 ? Math.round(v) : (+v).toFixed(c.step && c.step < 1 ? (c.step < 0.1 ? 2 : 1) : 0)).toString().replace('.', ',') + (c.unit ? ' ' + c.unit : ''); }

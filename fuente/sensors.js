@@ -265,12 +265,12 @@ const RFID_CARDS = [null,
   { name: 'Etiqueta Ultralight', uid: [0x04, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6], sak: 0x00, type: 6, color: '#c0392b', ink: '#fbe9e6', txt: '' }];
 const hx2 = (v) => (v < 16 ? '0' : '') + v.toString(16).toUpperCase();
 reg('RC522', { name: 'Lector RFID RC522 (SPI)', group: 'Sensores', spi: { ss: 0, sck: 1, mosi: 2, miso: 3, irq: 4, gnd: 5, rst: 6, vcc: 7 }, cards: RFID_CARDS,
-  desc: 'Módulo RFID RC522 (MFRC522, 13,56 MHz): lee y escribe tarjetas MIFARE Classic 1K y Ultralight a ≈3 cm. Alimentación 2,5–3,6 V (¡NO a 5 V: se quema!). Las señales son de 3,3 V: con un UNO (5 V) lo correcto es un divisor o adaptador de nivel. Pines SDA (=SS), SCK, MOSI, MISO, IRQ (sin usar), GND, RST y 3,3 V. Librería MFRC522 (miguelbalboa). Elige la tarjeta en la barra superior.',
+  desc: 'Módulo RFID RC522 (MFRC522, 13,56 MHz): lee y escribe tarjetas MIFARE Classic 1K y Ultralight a ≈3 cm. Alimentación 2,5–3,6 V (¡NO a 5 V: se quema!). Las señales son de 3,3 V: con un UNO (5 V) lo correcto es un divisor o adaptador de nivel. Pines SDA (=SS), SCK, MOSI, MISO, IRQ (sin usar), GND, RST y 3,3 V. Librería MFRC522 (miguelbalboa). Elige la tarjeta en la barra superior y pulsa «Acercar tarjeta»: se queda 1,5 s sobre el lector.',
   pins: ['SDA', 'SCK', 'MOSI', 'MISO', 'IRQ', 'GND', 'RST', '3.3V'].map((n, i) => ({ n, dx: i })), box: { x: -40, y: -196, w: 206, h: 204 },
-  stim: [{ k: 'card', label: 'Tarjeta', min: 0, max: 3, step: 1, def: 0, names: ['ninguna', 'blanca', 'llavero azul', 'Ultralight'] }, { k: 'tap', label: 'Acercar de nuevo', type: 'btn' }],
+  stim: [{ k: 'card', label: 'Tarjeta', type: 'sel', base: 1, def: 1, opts: ['Tarjeta blanca (MIFARE 1K)', 'Llavero azul (MIFARE 1K)', 'Etiqueta roja (Ultralight)'] }, { k: 'tap', label: '▶ Acercar tarjeta', type: 'btn' }],
   model(s, p) { const st = p.st; if (!pwr(p, s, 7, 5, 2.5, 3.7, 0.02)) { st.cur = 0; return; }
-    if (p.stim.tap) { p.stim.tap = 0; if (p.stim.card > 0) st.gap = s.t + 0.5; else st.tapUntil = s.t + 1.2; }
-    st.cur = (p.stim.card > 0 && !(s.t < st.gap)) ? p.stim.card : (s.t < st.tapUntil ? 1 : 0); if (!st.cur) st.done = 0;
+    if (p.stim.tap) { p.stim.tap = 0; st.until = s.t + 1.5; }
+    st.cur = s.t < st.until ? Math.min(3, Math.max(1, p.stim.card | 0)) : 0; if (!st.cur) st.done = 0;
     st.over = [0, 1, 2, 6].some(i => V(s, p, i) > 3.9); },
   readout: (it, sv) => { const st = statsOf(sv); if (st.ok === false) return 'sin alimentación válida (3,3 V en la pata 8 y GND; ¡no 5 V!)'; const c = RFID_CARDS[st.cur || 0];
     return (c ? `${c.name}\nUID ${c.uid.map(hx2).join(' ')} (${c.uid.length} bytes)` : 'sin tarjeta en el campo') + (st.over ? '\n⚠ señales a 5 V: fuera de especificación (usa adaptador de nivel)' : ''); }, maxV: 4,
