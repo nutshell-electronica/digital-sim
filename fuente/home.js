@@ -60,7 +60,7 @@ H.svg = function () {
 
 H.init = function (host, o) {
   host.innerHTML = `<div class="hm"><div class="hm-top">${o.avatar || ''}<span>José Luis Guerrero Marín</span></div><div class="hm-c"><div class="hm-k">Equipos Microprogramables</div><h1>DIGITAL-SIM</h1>
-    <p class="hm-s">Tablas de verdad y Karnaugh, esquemas lógicos, protoboard, Arduino / ESP32 y FPGA Alhambra II en un solo simulador.</p>
+    <p class="hm-s">Tablas de verdad y Karnaugh, esquemas lógicos, protoboard, Arduino / ESP32, lógica programable (PROM, PLA, PAL, GAL) y FPGA Alhambra II en un solo simulador.</p>
     <div class="hm-art"><svg viewBox="0 0 962 412" role="img" aria-label="Contador binario de cuatro bits montado en una protoboard, con un display que muestra la cuenta y un analizador lógico que dibuja las señales">${H.svg()}</svg></div>
     <div class="hm-b"><button class="hm-btn prim" id="hm-free"><b>Empezar</b></button></div>
     <div class="hm-f" id="hm-cont" hidden><button class="hm-link" id="hm-back">Continuar con el trabajo anterior</button></div></div></div>`;

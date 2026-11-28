@@ -302,7 +302,7 @@ class PldUI {
       if (k === 'GAL') for (let o = 0; o < NOUT; o++) { const xt = xc(8 + 2 * o), xcm = xc(9 + 2 * o), xm = (xt + xcm) / 2, fv = ev.fb[o]; s += `<path d="M${xm - 6},${bottom + 22} H${xm + 6} L${xm},${bottom + 10} Z" fill="${BG}" stroke="${INK}"/><path d="M${xt},${bottom + 4} H${xm}" stroke="${col(fv)}" fill="none"/><path d="M${xt},${bottom + 4} V${bottom}" stroke="${col(fv)}" fill="none"/><path d="M${xm},${bottom + 4} H${xcm - 0} V${bottom + 4}" stroke="${col(1 - fv)}" fill="none"/><circle cx="${xcm}" cy="${bottom + 8}" r="3" fill="${BG}" stroke="${INK}"/><path d="M${xcm},${bottom + 4} V${bottom + 5} M${xcm},${bottom + 11} V${bottom}" stroke="${col(1 - fv)}" fill="none"/>` + T(xm, bottom + 33, sh(nm.out[o]), { s: 8, c: MUTE }); yEnd = bottom + 70; }
       else yEnd = bottom + 20;
     }
-    const sv = this.el.querySelector('#pldsv'); sv.setAttribute('viewBox', `0 0 ${maxX + 20} ${yEnd + 16}`); sv.setAttribute('style', 'max-height:' + Math.min(720, (yEnd + 16) * 1.6) + 'px'); sv.innerHTML = s; this._dim = { w: maxX + 20, h: yEnd + 16 };
+    const sv = this.el.querySelector('#pldsv'); sv.setAttribute('viewBox', `0 0 ${maxX + 20} ${yEnd + 16}`); sv.setAttribute('style', 'max-height:' + Math.min(720, (yEnd + 16) * 1.6) + 'px'); sv.style.setProperty('--w', (maxX + 20) + 'px'); sv.innerHTML = s; this._dim = { w: maxX + 20, h: yEnd + 16 };
   }
   /* ----- paneles ----- */
   render() {

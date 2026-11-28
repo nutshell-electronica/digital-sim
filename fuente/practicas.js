@@ -4,7 +4,7 @@
 'use strict';
 const PR = {};
 const T = {
-  board: 'Protoboard', kmap: 'Tablas y Karnaugh', schem: 'Esquema lógico', mcu: 'Arduino / ESP32', fpga: 'FPGA Alhambra II'
+  board: 'Protoboard', kmap: 'Tablas y Karnaugh', schem: 'Esquema lógico', mcu: 'Arduino / ESP32', fpga: 'Lógica programable (FPGA)'
 };
 PR.TOOLNAME = T;
 
