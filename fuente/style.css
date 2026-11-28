@@ -157,3 +157,7 @@ header .brand{cursor:pointer}
  .pld-sv svg{max-width:none!important;max-height:none!important;width:calc(var(--w)*1.3)!important;height:auto;touch-action:pan-x pan-y}
  .pld-r{border-left:0;border-top:1px solid var(--bd);overflow:visible}.pld-cmp,.gt{font-size:12px}
 }
+@media (max-width:900px){
+ #tabs{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none}#tabs::-webkit-scrollbar{display:none}#tabs button{flex:none;white-space:nowrap}
+ header.top{overflow-x:auto;white-space:nowrap;scrollbar-width:none}header.top::-webkit-scrollbar{display:none}header.top>*{flex:none}
+}
