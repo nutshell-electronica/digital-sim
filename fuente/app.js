@@ -66,7 +66,7 @@ App.go = function (id) {
   const prev = App.page;
   if (prev === 'schem' && id !== 'schem') App.caps.schem = App.schemEd.svgToDataURL();
   if (prev === 'board' && id !== 'board') { App.caps.board = App.boardEd.svgToImg(); App.caps.la = laImage(); }
-  if (prev === 'fpga' && id !== 'fpga') App.caps.fpga = App.fpgaUI.ed.svgToDataURL();
+  if (prev === 'fpga' && id !== 'fpga') { App.caps.fpga = App.fpgaUI.ed.svgToDataURL(); if (App.fpgaUI.mode === 'pld' || App.fpgaUI.pld.hasWork()) App.caps.pld = App.fpgaUI.pld.capture(); }
   App.page = id; PAGES.forEach(p => { const e = $('#pg-' + p.id); e.hidden = p.id !== id; });
   document.querySelectorAll('#tabs [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === id));
   if (id === 'schem') App.schemEd.dirty = true; if (id === 'board') { App.boardEd.dirty = true; if (!App.boardEd.fitted) App.boardEd.fit(); } if (id === 'fpga') App.fpgaUI.ed.dirty = true;
@@ -153,10 +153,10 @@ App.blank = function () {
   App.caps = {}; App.lastCompare = ''; App.mcuCtl = null; App.fpgaVerilog = '';
   const st = Report.state; st.fields = {}; st.photos = {};
   App.kmap.st = { n: 3, names: ['A', 'B', 'C'], outs: [{ name: 'F', t: new Array(8).fill(0) }], title: '', dcAs: 'auto' }; App.kmap.recalc(); App.kmap.render();
-  App.schemEd.load(new Schem.Doc().toJSON()); App.fpgaUI.ed.load(new Schem.Doc().toJSON());
+  App.schemEd.load(new Schem.Doc().toJSON()); App.fpgaUI.ed.load(new Schem.Doc().toJSON()); App.fpgaUI.pld.reset(); App.pldText = '';
   const nb = Board.newBoard(); App.boardEd.load(nb); App.boardEd.log = []; if ($('#mcc')) { $('#mcc').value = MCU_TEMPLATE; $('#mcsr').dataset.n = ''; }
 };
-App.hasWork = function () { try { return App.schemEd.doc.parts.length > 0 || App.boardEd.board.items.length > 0 || App.fpgaUI.ed.doc.parts.length > 0; } catch (e) { return false; } };
+App.hasWork = function () { try { return App.schemEd.doc.parts.length > 0 || App.boardEd.board.items.length > 0 || App.fpgaUI.ed.doc.parts.length > 0 || App.fpgaUI.pld.hasWork(); } catch (e) { return false; } };
 
 /* ---------- guía de uso ---------- */
 function buildGuide() {
@@ -204,6 +204,9 @@ function buildGuide() {
 
   <h2 id="g7">7 · FPGA Alhambra II</h2>
   <ul><li>Dibuja la función con puertas. A cada interruptor, pulsador o LED asígnale un <b>pin de la placa</b> en Propiedades (SW1, SW2, LED0–LED7, D0–D7).</li><li>La placa virtual muestra los LED y deja pulsar los interruptores. Se generan el Verilog y el fichero de pines <code>.pcf</code> equivalentes a lo que harías en Icestudio.</li><li>Pines verificados con el <code>pinout.json</code> oficial de Icestudio para la Alhambra II: SW1 = 34, SW2 = 33, LED0–LED7 = 45, 44, 43, 42, 41, 39, 38, 37, D0–D7 = 2, 1, 4, 3, 8, 7, 10, 9, reloj 12 MHz = 49. Los pulsadores son de lógica positiva (1 al pulsar).</li></ul>
+
+  <h3>PLD: PROM, PLA, PAL y GAL</h3>
+  <ul><li>En la pestaña FPGA, el botón «PLD» abre la matriz de fusibles. Cada cruz es un fusible conectado: haz clic para programarla. Cambia las entradas A–D con un clic.</li><li><b>PROM</b>: AND fijo, OR programable (una tabla de verdad). <b>PLA</b>: AND y OR programables, los términos se comparten. <b>PAL</b>: AND programable, OR fijo (4 términos por salida), activo a 1 o a 0. <b>GAL</b>: PAL con macrocelda: polaridad, salida combinacional o registrada y realimentación.</li><li>Elige un ejercicio y mira la tabla «¿En qué dispositivos cabe?». «Rellenar» programa el chip por ti; «Comprobar» verifica tu mapa en todas las combinaciones.</li><li>Los PROM, PLA y PAL son de un solo uso: «Programar chip» quema los fusibles y no hay vuelta atrás (hay que pedir otro chip). El GAL se borra y se reprograma.</li></ul>
 
   <h2 id="g8">8 · Informe de práctica</h2>
   <ul><li>El informe recoge lo que has hecho en cada módulo: tablas, mapas, capturas del esquema, de la protoboard y del analizador, medidas anotadas, código del Arduino, Verilog.</li><li>Las capturas se toman al <b>salir</b> de cada módulo, o con el botón «Captura». «Actualizar datos» vuelve a leerlo todo.</li><li>Las celdas con fondo marcado son para <b>lo medido en el taller</b> y las observaciones; las zonas «Foto» son para subir tus fotos del montaje real.</li><li>«Imprimir / guardar PDF» abre la impresión con portada sin numerar y «Página X de Y» (requiere Chrome o Edge reciente). «Descargar HTML» guarda el informe suelto.</li><li>«Guardar proyecto» crea un .json con todo tu trabajo: es lo que entregas o recuperas otro día. El navegador también guarda una copia automática.</li></ul>
@@ -327,9 +330,9 @@ function reportCSS() { const t = $('style#css').textContent, i = t.indexOf('/*RE
 function printReport() { if (!App.practice) return; refreshReport(); const old = $('#printroot'); if (old) old.remove(); const d = document.createElement('div'); d.id = 'printroot'; d.innerHTML = $('#rpv').innerHTML; document.body.appendChild(d); document.body.classList.add('printing'); setTimeout(() => { window.print(); setTimeout(() => { document.body.classList.remove('printing'); d.remove(); }, 400); }, 120); }
 function downloadReport() { if (!App.practice) return; refreshReport(); const p = Practicas.get(App.practice); const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${p.free ? 'Modo libre' : 'Práctica ' + p.id}</title><style>${reportCSS()}\nbody{background:#F9F8F6;margin:0;padding:24px}</style></head><body>${$('#rpv').innerHTML}</body></html>`; dl(`Informe_P${p.id}.html`, html, 'text/html'); }
 function dl(name, data, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
-function project() { return { v: 1, practice: App.practice, report: Report.state, kmap: App.kmap.st, schem: App.schemEd.doc.toJSON(), board: App.boardEd.board, fpga: App.fpgaUI.ed.doc.toJSON(), log: App.boardEd.log }; }
+function project() { return { v: 1, practice: App.practice, report: Report.state, kmap: App.kmap.st, schem: App.schemEd.doc.toJSON(), board: App.boardEd.board, fpga: App.fpgaUI.ed.doc.toJSON(), pld: App.fpgaUI.pld.toJSON(), log: App.boardEd.log }; }
 function saveFile() { dl(`DIGITAL-SIM_${App.practice === 'LIBRE' ? 'libre' : 'P' + App.practice}.json`, JSON.stringify(project()), 'application/json'); App.fileDirty = false; App.lastFile = Date.now(); autoStatus(); }
-function loadProject(j) { App.practice = j.practice; Object.assign(Report.state, j.report); App.kmap.st = j.kmap; App.kmap.recalc(); App.kmap.render(); App.schemEd.load(j.schem); App.fpgaUI.ed.load(j.fpga); App.boardEd.load(j.board); App.boardEd.log = j.log || []; refreshReport(); }
+function loadProject(j) { App.practice = j.practice; Object.assign(Report.state, j.report); App.kmap.st = j.kmap; App.kmap.recalc(); App.kmap.render(); App.schemEd.load(j.schem); App.fpgaUI.ed.load(j.fpga); App.fpgaUI.pld.load(j.pld); App.boardEd.load(j.board); App.boardEd.log = j.log || []; refreshReport(); }
 function hhmm(t) { return new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }); }
 function autoStatus() {
   const el = $('#st4'); if (!el) return; const a = App.lastAuto ? 'Autoguardado ' + hhmm(App.lastAuto) : '', f = App.fh ? ' · archivo: ' + App.fh.name : (App.fileDirty ? ' · sin guardar en archivo' : App.lastFile ? ' · archivo guardado ' + hhmm(App.lastFile) : '');

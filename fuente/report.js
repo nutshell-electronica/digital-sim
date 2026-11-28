@@ -74,6 +74,7 @@ R.build = function (app) {
   }
   if (p.kind === 'seq') { sec('Esquema simulado', shot('Circuito secuencial', app.caps.schem)); sec('Cronograma', shot('Diagrama de tiempos', app.caps.la)); sec('Secuencia observada', block('seq', 'Anota la secuencia de estados que observas en los LED.')); }
   if (p.kind === 'fpga') { sec('Diseño en la FPGA', shot('Diseño del sumador (bloques lógicos)', app.caps.fpga) + (app.fpgaVerilog ? `<pre class="code">${esc(app.fpgaVerilog)}</pre>` : '')); }
+  if (app.pldText) sec('Lógica programable (PLD)', (app.caps.pld ? shot('Matriz de fusibles', app.caps.pld) : '') + `<pre class="code">${esc(app.pldText)}</pre>` + block('pld', 'Explica qué diferencia has observado entre PROM, PLA, PAL y GAL (términos usados, compartición, polaridad, registros).'));
   if (p.kind === 'mcu') {
     const ctl = app.mcuCtl; sec('Código', `<pre class="code">${esc(board.mcu ? board.mcu.code : '')}</pre>`);
     sec('Resultado de la simulación', `<p>Monitor serie (últimas líneas):</p><pre class="code">${esc(ctl ? ctl.serial.split('\n').slice(-12).join('\n') : '(sin ejecución)')}</pre>` + (ctl && ctl.lcd ? `<p>Pantalla LCD:</p><pre class="lcd">${ctl.lcd.buf.map(esc).join('\n')}</pre>` : ''));

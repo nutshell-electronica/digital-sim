@@ -138,3 +138,14 @@ header .brand{cursor:pointer}
 .crash{position:fixed;inset:0;z-index:90;background:rgba(31,36,33,.45);display:flex;align-items:center;justify-content:center}.crash[hidden]{display:none}
 .crash .cbox{background:#F9F8F6;border:1px solid var(--bd);border-left:6px solid var(--ac);border-radius:6px;max-width:560px;padding:18px 22px}.crash .ct{font-weight:700;color:var(--ac);font-size:16px;margin-bottom:8px}.crash p{margin:6px 0}.crash .cb{display:flex;gap:8px;margin-top:14px}
 .hs select{font-size:11px;max-width:210px;height:22px;flex:none}.hs .hs-c{flex:none}
+
+.fp{grid-template-rows:auto minmax(0,1fr)}.fp-modes{grid-column:1/-1;display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--bd)}
+.fp.pldm{display:grid;grid-template-columns:1fr}.fp-pld{min-height:0;overflow:hidden}.fp-pld[hidden]{display:none}
+.pld{display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,34%);height:100%}.pld-l{overflow:auto;padding:8px 12px;min-width:0}.pld-r{border-left:1px solid var(--bd);padding:10px;overflow:auto}
+.pld-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.pld-name{font-weight:700;color:var(--ac);margin-left:8px}.pld-sv svg{display:block;margin:6px auto}
+.pld-pins{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0;align-items:center}.pld-led{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700}.pld-led i{width:12px;height:12px;border-radius:50%;border:1px solid var(--tx);background:var(--bg)}.pld-led i.on{background:var(--ac)}
+.pld-msg{white-space:pre-wrap;margin:6px 0;padding:4px 8px;border-left:4px solid var(--bd)}.pld-msg.ok{border-color:var(--sg)}.pld-msg.ko{border-color:var(--ac)}
+#pld-eq{width:100%;font:12px 'Courier New',monospace;background:var(--sgs);border:1px solid var(--bd);border-radius:6px;padding:6px}
+.pld-cmp td,.pld-cmp th{padding:2px 6px;text-align:left}.pld-cmp tr.why td{font-size:11px;color:#696C69;border-bottom:1px solid var(--bd)}.pld-cmp tr.cur td:first-child{font-weight:700;color:var(--ac)}.okc{color:var(--sg)}.koc{color:var(--ac)}
+.pld-tt td,.pld-tt th{padding:1px 6px}.pld-tt tr.cur{background:var(--sgs)}.warn{color:var(--ac)}
+.fp-ed[hidden],.fp-board[hidden]{display:none}

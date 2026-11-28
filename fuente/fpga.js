@@ -7,11 +7,13 @@ const esc2 = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 class FpgaUI {
   constructor(el, app) {
     this.el = el; this.app = app; this.activeLow = false;
-    el.innerHTML = `<div class="fp-ed"></div><div class="fp-board"><div class="pal-h">Placa Alhambra II (virtual)</div>
+    el.innerHTML = `<div class="fp-modes"><button class="b sm prim" data-m="fpga">FPGA · Alhambra II</button><button class="b sm" data-m="pld">PLD · PROM / PLA / PAL / GAL</button><span class="mut sm" id="fpm-t"></span></div><div class="fp-ed"></div><div class="fp-board"><div class="pal-h">Placa Alhambra II (virtual)</div>
       <svg id="fpsv" viewBox="0 0 508 454" width="100%"></svg>
       <label class="chk"><input type="checkbox" id="fpal"> invertir pulsadores (activos a nivel bajo)</label><p class="mut">Alhambra II real: SW1 (pin 34) y SW2 (pin 33) llevan pull-down externo, lógica positiva: <b>1 al pulsar, 0 en reposo</b>. LED0–LED7: pines 45, 44, 43, 42, 41, 39, 38, 37 (activos a 1). Reloj de 12 MHz en el pin 49. Fuente: documentación FPGAwars / Icestudio (pinout.json) y Cuadernos técnicos CT.10.</p>
       <p class="mut">Asigna a cada interruptor, pulsador y LED del diseño un pin de la placa (panel «Propiedades»). Con la FPGA, el circuito se configura, no se cablea: el diseño se traduce a Verilog y se sintetiza.</p>
       <div class="row"><button class="b sm" data-f="ver">Generar Verilog y .pcf</button><button class="b sm prim" data-f="rep">Enviar al informe</button></div><pre id="fpv" class="code sm"></pre></div>`;
+    this.pld = new PldUI(Object.assign(document.createElement('div'), { className: 'fp-pld' }), app); el.appendChild(this.pld.el); this.pld.el.hidden = true; this.mode = 'fpga';
+    el.querySelector('.fp-modes').addEventListener('click', (e) => { const b = e.target.closest('[data-m]'); if (b) this.setMode(b.dataset.m); });
     this.ed = new Schem.Editor(el.querySelector('.fp-ed'), { fpga: true, onFrame: () => this.frame(), onChange: (k) => k === 'capture' || this.app.touch('fpga') });
     this.drawBoard();
     el.querySelector('#fpal').onchange = (e) => { this.activeLow = e.target.checked; this.sync(true); };
@@ -20,6 +22,7 @@ class FpgaUI {
     sv.addEventListener('mousedown', e => { const t = e.target.closest('[data-btn]'); if (t) { this.setPush(t.dataset.btn, true); } const d = e.target.closest('[data-dip]'); if (d) this.toggleDip(+d.dataset.dip); });
     window.addEventListener('mouseup', () => { ['SW1', 'SW2'].forEach(b => { if (this.held && this.held[b]) this.setPush(b, false); }); });
   }
+  setMode(m) { this.mode = m; const el = this.el; el.classList.toggle('pldm', m === 'pld'); el.querySelector('.fp-ed').hidden = el.querySelector('.fp-board').hidden = m === 'pld'; this.pld.el.hidden = m !== 'pld'; el.querySelectorAll('[data-m]').forEach(b => b.classList.toggle('prim', b.dataset.m === m)); el.querySelector('#fpm-t').textContent = m === 'pld' ? 'Lógica programable clásica: la matriz de fusibles se programa, no se cablea.' : ''; if (m === 'pld') this.pld.render(); else this.ed.dirty = true; }
   parts(kind, pin) { return this.ed.doc.parts.filter(p => p.kind === kind && p.props.pin === pin); }
   setPush(b, down) { this.held = this.held || {}; this.held[b] = down; this.parts('PUSH', b).forEach(p => this.ed.setSrc(p, (down ? 1 : 0) ^ (this.activeLow ? 1 : 0))); this.ed.dirty = true; }
   toggleDip(i) { this.parts('SW', 'D' + i).forEach(p => { p.props.on = p.props.on ? 0 : 1; this.ed.setSrc(p, p.props.on); }); this.ed.dirty = true; }
